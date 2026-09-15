@@ -1,0 +1,8 @@
+metric,unit,dense_mean,dense_std,dense_n_runs,hybrid_mean,hybrid_std,hybrid_n_runs,abs_diff_hybrid_minus_dense,source
+Recall@5,,0.9111111111111111,0.0,3,0.9333333333333333,0.0,3,0.022222222222222254,"data/evaluation_aggregate.publication.json (repeated-run mean/std, runs 1-3, n=3)"
+Term Coverage,,0.8296296296296296,0.012830005981991702,3,0.8296296296296296,0.027962349760261997,3,0.0,"data/evaluation_aggregate.publication.json (repeated-run mean/std, runs 1-3, n=3)"
+MRR@5,,0.6922222222222222,,1,0.7833333333333333,,1,0.09111111111111114,"data/evaluation_results.publication_run4.json (single run, n=1, no repeated-run std)"
+nDCG@5,,0.7462608260598519,,1,0.8210372987128326,,1,0.07477647265298071,"data/evaluation_results.publication_run4.json (single run, n=1, no repeated-run std)"
+Retrieval Latency,ms,41.18752592777902,1.486336451741164,3,44.75315703182585,1.8289975040234352,3,3.5656311040468296,"data/evaluation_aggregate.publication.json (repeated-run mean/std, runs 1-3, n=3)"
+Generation Latency,ms,28321.96641778056,239.78889225953046,3,23674.814777773874,285.0898686026483,3,-4647.151640006687,"data/evaluation_aggregate.publication.json (repeated-run mean/std, runs 1-3, n=3)"
+End-to-End Latency,ms,28363.15394370834,241.2745701420338,3,23719.5679348057,286.49255476872423,3,-4643.586008902643,"data/evaluation_aggregate.publication.json (repeated-run mean/std, runs 1-3, n=3)"

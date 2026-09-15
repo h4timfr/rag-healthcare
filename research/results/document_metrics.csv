@@ -1,0 +1,11 @@
+document,source_file,document_type,method,n_questions,recall_at_5,mrr_at_5,ndcg_at_5,term_coverage
+CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,clinical/infection-control guideline,dense,9,1.0,1.0,1.0,0.8888888888888888
+CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,clinical/infection-control guideline,hybrid,9,1.0,1.0,1.0,1.0
+"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,public-health fact sheet,dense,9,0.8888888888888888,0.6055555555555556,0.6754876524945389,0.7777777777777778
+"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,public-health fact sheet,hybrid,9,0.8888888888888888,0.6851851851851851,0.7367699726190509,0.7222222222222222
+"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,public-health statistics report,dense,9,0.7777777777777778,0.5648148148148148,0.6179562568494279,0.7777777777777778
+"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,public-health statistics report,hybrid,9,0.7777777777777778,0.6666666666666666,0.6957621674603239,0.7777777777777778
+OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,clinical/medical report,dense,9,1.0,0.6981481481481482,0.7720510132088214,0.9444444444444444
+OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,clinical/medical report,hybrid,9,1.0,0.7314814814814814,0.7991706739129232,0.7777777777777778
+Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,patient/clinical guideline,dense,9,0.8888888888888888,0.5925925925925926,0.6658092077464715,0.8888888888888888
+Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,patient/clinical guideline,hybrid,9,1.0,0.8333333333333334,0.8734836795718651,1.0

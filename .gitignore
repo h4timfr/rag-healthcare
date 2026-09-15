@@ -1,0 +1,63 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.pytest_tmp/
+.streamlit/
+
+# Generated/runtime data - not source
+data/raw_pdfs/*
+!data/raw_pdfs/.gitkeep
+data/*.db
+data/*.index
+
+# Research corpus: keep the corpus-building code (scripts/build_research_corpus.py)
+# and cite sources by URL in README instead of committing downloaded PDFs or the
+# FAISS/SQLite index built from them - both are fully regenerable locally.
+data/research_corpus/*.db
+data/research_corpus/*.index
+data/research_corpus/raw/*
+!data/research_corpus/raw/.gitkeep
+
+# Generated evaluation outputs - regenerable locally via scripts/run_evaluation.py
+# and scripts/aggregate_runs.py; never committed because some (the publication
+# healthcare benchmark) embed model-generated text derived from a private,
+# user-provided clinical sample document (see README's "Private data" section).
+data/benchmark_results.txt
+data/evaluation_results*.json
+data/evaluation_summary*.txt
+data/evaluation_aggregate*.json
+data/evaluation_aggregate*.txt
+
+# Private healthcare benchmark fixture: 9 of its 45 questions embed real
+# clinical facts (diagnoses, medications, dates) from a private sample report
+# that was never committed to this repo and no longer exists on disk anywhere
+# other than the local production index.
+data/evaluation_corpus.json
+data/healthcare_eval_questions.json
+
+# Local export bundles for external sharing - duplicate what's already in
+# research/ and data/, and some contain the private evaluation outputs above.
+/research_report_package.zip
+/research_results_for_analysis.zip
+/run4_for_analysis.zip
+
+# Malformed local artifact (a directory literally named "*.pptx" containing
+# the actual .pptx) - kept locally, not part of the published repository.
+/RAG Healthcare Review1.pptx/
+
+# Secrets - never commit
+.env
+.env.*
+secrets/
+credentials/
+*.pem
+*.key
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

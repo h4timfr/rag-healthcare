@@ -1,0 +1,421 @@
+[
+  {
+    "id": "Q01",
+    "question": "What is the main topic of this healthcare review?",
+    "expected_pages": [2],
+    "expected_terms": ["healthcare documents", "retrieval-augmented generation"]
+  },
+  {
+    "id": "Q02",
+    "question": "Which metrics evaluate retrieval?",
+    "expected_pages": [9],
+    "expected_terms": ["Precision@k", "Recall@k", "retrieval relevance"]
+  },
+  {
+    "id": "Q03",
+    "question": "Which metrics evaluate generation?",
+    "expected_pages": [9],
+    "expected_terms": ["answer relevance", "faithfulness", "completeness"]
+  },
+  {
+    "id": "Q04",
+    "question": "What are the system-level evaluation metrics?",
+    "expected_pages": [9],
+    "expected_terms": ["retrieval latency", "end-to-end response time"]
+  },
+  {
+    "id": "Q05",
+    "question": "What is the future scope of the system?",
+    "expected_pages": [9],
+    "expected_terms": [
+      "Improve chunking strategy",
+      "Compare embedding models",
+      "Hybrid keyword + semantic retrieval",
+      "Reranking of retrieved chunks",
+      "Stronger source / citation display",
+      "Larger healthcare document collections"
+    ]
+  },
+  {
+    "id": "Q06",
+    "question": "Have the evaluation results already been obtained?",
+    "expected_pages": [9],
+    "expected_terms": ["No results yet", "planned metrics"]
+  },
+  {
+    "id": "Q07",
+    "question": "What retrieval improvements are proposed for future work?",
+    "expected_pages": [9],
+    "expected_terms": [
+      "Hybrid keyword + semantic retrieval",
+      "Reranking of retrieved chunks",
+      "Improve chunking strategy"
+    ]
+  },
+  {
+    "id": "Q08",
+    "question": "What improvements are proposed for source presentation?",
+    "expected_pages": [9],
+    "expected_terms": ["Stronger source / citation display"]
+  },
+  {
+    "id": "Q09",
+    "question": "What improvements are proposed for the document collection?",
+    "expected_pages": [9],
+    "expected_terms": ["Larger healthcare document collections"]
+  },
+  {
+    "id": "Q10",
+    "question": "When will the evaluation metrics be measured?",
+    "expected_pages": [9],
+    "expected_terms": ["after implementation and testing"]
+  },
+
+  {
+    "id": "Q11",
+    "question": "Why are healthcare documents difficult to work with?",
+    "expected_pages": [2],
+    "expected_terms": ["Long and information-dense"]
+  },
+  {
+    "id": "Q12",
+    "question": "Why is manual search considered a problem in healthcare documents?",
+    "expected_pages": [2],
+    "expected_terms": ["Slow and difficult at scale"]
+  },
+  {
+    "id": "Q13",
+    "question": "What limitation of keyword search is identified?",
+    "expected_pages": [2],
+    "expected_terms": ["Limited semantic understanding"]
+  },
+  {
+    "id": "Q14",
+    "question": "What is the limitation of using a direct LLM without retrieval?",
+    "expected_pages": [2],
+    "expected_terms": ["May not be grounded in the document"]
+  },
+  {
+    "id": "Q15",
+    "question": "What is the central problem the proposed NLP system addresses?",
+    "expected_pages": [2],
+    "expected_terms": [
+      "semantically relevant information",
+      "healthcare documents",
+      "context-grounded answers"
+    ]
+  },
+  {
+    "id": "Q16",
+    "question": "What are the main objectives of the proposed system?",
+    "expected_pages": [2],
+    "expected_terms": [
+      "Process healthcare documents",
+      "Retrieve relevant passages",
+      "Provide retrieved context to an LLM",
+      "Generate grounded answers"
+    ]
+  },
+
+  {
+    "id": "Q17",
+    "question": "How does keyword retrieval differ from embedding retrieval?",
+    "expected_pages": [3],
+    "expected_terms": [
+      "exact lexical overlap",
+      "semantic similarity"
+    ]
+  },
+  {
+    "id": "Q18",
+    "question": "What does embedding retrieval capture that keyword retrieval does not?",
+    "expected_pages": [3],
+    "expected_terms": ["semantic similarity"]
+  },
+  {
+    "id": "Q19",
+    "question": "What is the key difference between traditional LLM use and RAG?",
+    "expected_pages": [4],
+    "expected_terms": [
+      "parametric memory",
+      "Retrieve Relevant Passages",
+      "Retrieved Context"
+    ]
+  },
+  {
+    "id": "Q20",
+    "question": "What is the key idea behind the RAG workflow?",
+    "expected_pages": [4],
+    "expected_terms": ["Retrieve first", "Generate second"]
+  },
+  {
+    "id": "Q21",
+    "question": "What does the retriever do in the RAG architecture?",
+    "expected_pages": [4],
+    "expected_terms": ["Finds relevant document chunks"]
+  },
+  {
+    "id": "Q22",
+    "question": "What does the embedding model do?",
+    "expected_pages": [4],
+    "expected_terms": ["Converts text/query into dense vectors"]
+  },
+  {
+    "id": "Q23",
+    "question": "What is the role of the vector database?",
+    "expected_pages": [4],
+    "expected_terms": ["Stores embeddings for similarity search"]
+  },
+  {
+    "id": "Q24",
+    "question": "What is the role of the LLM in the RAG system?",
+    "expected_pages": [4],
+    "expected_terms": ["Generates the final answer from context"]
+  },
+
+  {
+    "id": "Q25",
+    "question": "What did Karpukhin et al. 2020 contribute to the project foundation?",
+    "expected_pages": [5],
+    "expected_terms": [
+      "Dense Passage Retrieval",
+      "dense embeddings",
+      "semantic similarity"
+    ]
+  },
+  {
+    "id": "Q26",
+    "question": "What contribution from Lewis et al. 2020 inspired the proposed pipeline?",
+    "expected_pages": [5],
+    "expected_terms": [
+      "Retrieval-Augmented Generation",
+      "retriever",
+      "generator"
+    ]
+  },
+  {
+    "id": "Q27",
+    "question": "What is Fusion-in-Decoder according to the literature survey?",
+    "expected_pages": [5],
+    "expected_terms": [
+      "Fusion-in-Decoder",
+      "retrieved passage",
+      "evidence"
+    ]
+  },
+  {
+    "id": "Q28",
+    "question": "What does the Almanac work contribute to the healthcare RAG motivation?",
+    "expected_pages": [5],
+    "expected_terms": [
+      "clinical guideline documents",
+      "factuality",
+      "safety"
+    ]
+  },
+  {
+    "id": "Q29",
+    "question": "What does the MIRAGE Benchmark study examine?",
+    "expected_pages": [5],
+    "expected_terms": [
+      "corpus",
+      "retriever",
+      "LLM choices",
+      "medical QA"
+    ]
+  },
+  {
+    "id": "Q30",
+    "question": "What progression is shown across the literature survey?",
+    "expected_pages": [5],
+    "expected_terms": [
+      "Dense Retrieval",
+      "RAG",
+      "Multi-Passage RAG",
+      "Healthcare RAG",
+      "Medical RAG Evaluation"
+    ]
+  },
+
+  {
+    "id": "Q31",
+    "question": "What is the proposed methodology pipeline?",
+    "expected_pages": [6],
+    "expected_terms": [
+      "Preprocessing",
+      "Chunking",
+      "Embeddings",
+      "Semantic Retrieval",
+      "Generation"
+    ]
+  },
+  {
+    "id": "Q32",
+    "question": "Why is chunking used in the proposed methodology?",
+    "expected_pages": [6],
+    "expected_terms": ["focused, retrievable evidence"]
+  },
+  {
+    "id": "Q33",
+    "question": "What happens during text processing?",
+    "expected_pages": [6],
+    "expected_terms": ["Clean and prepare extracted healthcare text"]
+  },
+  {
+    "id": "Q34",
+    "question": "What is the purpose of embeddings in the methodology?",
+    "expected_pages": [6],
+    "expected_terms": [
+      "numerical representations",
+      "semantic meaning"
+    ]
+  },
+  {
+    "id": "Q35",
+    "question": "How does semantic retrieval identify relevant passages?",
+    "expected_pages": [6],
+    "expected_terms": [
+      "query",
+      "document representations",
+      "relevant passages"
+    ]
+  },
+  {
+    "id": "Q36",
+    "question": "What does the language generation stage do?",
+    "expected_pages": [6],
+    "expected_terms": [
+      "retrieved context",
+      "natural-language response"
+    ]
+  },
+
+  {
+    "id": "Q37",
+    "question": "What tool is used for text extraction in the proposed architecture?",
+    "expected_pages": [7],
+    "expected_terms": ["PyMuPDF"]
+  },
+  {
+    "id": "Q38",
+    "question": "Which embedding model is specified in the proposed architecture?",
+    "expected_pages": [7],
+    "expected_terms": ["MiniLM-L6-v2"]
+  },
+  {
+    "id": "Q39",
+    "question": "Which vector database is proposed?",
+    "expected_pages": [7],
+    "expected_terms": ["FAISS"]
+  },
+  {
+    "id": "Q40",
+    "question": "What does SQLite store in the proposed architecture?",
+    "expected_pages": [7],
+    "expected_terms": [
+      "document_id",
+      "chunk_id",
+      "page",
+      "source"
+    ]
+  },
+  {
+    "id": "Q41",
+    "question": "What interface is mentioned for the online query and generation layer?",
+    "expected_pages": [7],
+    "expected_terms": ["Streamlit UI"]
+  },
+  {
+    "id": "Q42",
+    "question": "What local system is proposed for language model generation?",
+    "expected_pages": [7],
+    "expected_terms": ["Ollama"]
+  },
+
+  {
+    "id": "Q43",
+    "question": "What is the offline document ingestion workflow?",
+    "expected_pages": [8],
+    "expected_terms": [
+      "PyMuPDF",
+      "Extracted Text",
+      "Cleaning",
+      "Chunks",
+      "Embeddings",
+      "FAISS"
+    ]
+  },
+  {
+    "id": "Q44",
+    "question": "What information is stored in the SQLite side mapping for each chunk?",
+    "expected_pages": [8],
+    "expected_terms": [
+      "document_id",
+      "chunk_id",
+      "page",
+      "source"
+    ]
+  },
+  {
+    "id": "Q45",
+    "question": "What is the online query and retrieval workflow?",
+    "expected_pages": [8],
+    "expected_terms": [
+      "User Query",
+      "Query Embedding",
+      "FAISS Search",
+      "Top-k Chunks",
+      "Metadata Lookup",
+      "LLM"
+    ]
+  },
+  {
+    "id": "Q46",
+    "question": "What components are combined to form the prompt?",
+    "expected_pages": [8],
+    "expected_terms": [
+      "System Instruction",
+      "Retrieved Context",
+      "User Query"
+    ]
+  },
+  {
+    "id": "Q47",
+    "question": "What is returned together with the generated answer?",
+    "expected_pages": [8],
+    "expected_terms": ["Source / Page"]
+  },
+
+  {
+    "id": "Q48",
+    "question": "What is the main problem identified in the conclusion?",
+    "expected_pages": [10],
+    "expected_terms": [
+      "Healthcare documents",
+      "difficult to search manually"
+    ]
+  },
+  {
+    "id": "Q49",
+    "question": "What approach does the conclusion propose?",
+    "expected_pages": [10],
+    "expected_terms": [
+      "RAG",
+      "semantic retrieval",
+      "LLM generation"
+    ]
+  },
+  {
+    "id": "Q50",
+    "question": "What is the proposed overall pipeline from documents to answer?",
+    "expected_pages": [10],
+    "expected_terms": [
+      "Healthcare Documents",
+      "NLP Processing",
+      "Semantic Retrieval",
+      "Relevant Context",
+      "LLM",
+      "Grounded Answer"
+    ]
+  }
+]

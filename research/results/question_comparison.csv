@@ -1,0 +1,46 @@
+id,category,document,source_file,dense_recall_at_5,hybrid_recall_at_5,dense_mrr_at_5,hybrid_mrr_at_5,mrr_winner,dense_ndcg_at_5,hybrid_ndcg_at_5,ndcg_winner
+H01,numeric_detail,"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H02,factual_extraction,"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,1.0,1.0,0.25,0.3333333333333333,hybrid,0.43067655807339306,0.5,hybrid
+H03,numeric_detail,"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,0.0,0.0,0.0,0.0,tie,0.0,0.0,tie
+H04,terminology_semantic,"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,1.0,1.0,0.5,1.0,hybrid,0.6309297535714575,1.0,hybrid
+H05,numeric_detail,"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H06,factual_extraction,CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H07,section_retrieval,CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H08,factual_extraction,CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H09,multi_part,CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H10,numeric_detail,CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H11,numeric_detail,"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,1.0,1.0,0.5,1.0,hybrid,0.6309297535714575,1.0,hybrid
+H12,numeric_detail,"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,1.0,1.0,0.3333333333333333,0.5,hybrid,0.5,0.6309297535714575,hybrid
+H13,numeric_detail,"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H14,numeric_detail,"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,1.0,1.0,0.25,0.5,hybrid,0.43067655807339306,0.6309297535714575,hybrid
+H15,multi_part,"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H16,factual_extraction,"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H17,section_retrieval,"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,0.0,0.0,0.0,0.0,tie,0.0,0.0,tie
+H18,numeric_detail,Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H19,section_retrieval,Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,1.0,1.0,0.5,1.0,hybrid,0.6309297535714575,1.0,hybrid
+H20,multi_part,Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H21,multi_part,Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H22,multi_part,Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,0.0,1.0,0.0,0.25,hybrid,0.0,0.43067655807339306,hybrid
+H23,terminology_semantic,Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,1.0,1.0,0.25,1.0,hybrid,0.43067655807339306,1.0,hybrid
+H24,terminology_semantic,Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,1.0,1.0,0.3333333333333333,1.0,hybrid,0.5,1.0,hybrid
+H25,multi_part,Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,1.0,1.0,0.25,1.0,hybrid,0.43067655807339306,1.0,hybrid
+H26,numeric_detail,OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,1.0,1.0,0.2,0.25,hybrid,0.38685280723454163,0.43067655807339306,hybrid
+H27,factual_extraction,OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H28,factual_extraction,OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,1.0,1.0,0.25,0.3333333333333333,hybrid,0.43067655807339306,0.5,hybrid
+H29,terminology_semantic,OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H30,numeric_detail,OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H31,section_retrieval,OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H32,factual_extraction,"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,1.0,1.0,0.2,0.3333333333333333,hybrid,0.38685280723454163,0.5,hybrid
+H33,multi_part,"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,1.0,1.0,0.5,0.5,tie,0.6309297535714575,0.6309297535714575,tie
+H34,terminology_semantic,"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H35,section_retrieval,"National Chronic Kidney Disease Fact Sheet, 2014",cdc_ckd_fact_sheet_2014.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H36,factual_extraction,CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H37,multi_part,CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H38,terminology_semantic,CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H39,section_retrieval,CDC's Core Infection Prevention and Control Practices for Safe Healthcare Delivery in All Settings,cdc_dental_infection_control_2003.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H40,terminology_semantic,"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H41,section_retrieval,"National Diabetes Statistics Report, 2020",cdc_diabetes_statistics_2020.pdf,0.0,0.0,0.0,0.0,tie,0.0,0.0,tie
+H42,factual_extraction,Your Guide to Lowering Your Blood Pressure With DASH,nhlbi_dash_blood_pressure_guide.pdf,1.0,1.0,1.0,0.25,dense,1.0,0.43067655807339306,dense
+H43,multi_part,OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,1.0,1.0,1.0,1.0,tie,1.0,1.0,tie
+H44,section_retrieval,OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,1.0,1.0,0.3333333333333333,0.5,hybrid,0.5,0.6309297535714575,hybrid
+H45,terminology_semantic,OMC Report Sample - Cardio.pdf,OMC Report Sample - Cardio.pdf,1.0,1.0,0.5,0.5,tie,0.6309297535714575,0.6309297535714575,tie
