@@ -7,40 +7,27 @@ from src.generation.ollama_client import generate
 
 
 def ask(query: str, history: list[dict]) -> str:
-    # Make follow-up questions understandable to retrieval.
-    retrieval_query = query
-
-    if history:
-        previous = history[-4:]
-        previous_text = "\n".join(
-            f"{turn['role']}: {turn['content']}" for turn in previous
-        )
-        retrieval_query = (
-            f"Conversation context:\n{previous_text}\n\n"
-            f"Current question:\n{query}"
-        )
-
-    # retrieve_hybrid raises plain ValueError (not a RagError) on empty query
-    # and returns [] rather than raising when nothing is found; normalize both
-    # to the same RagError-based contract the dense path already had.
+    # Retrieval always gets the clean current question - embedding the raw
+    # conversation transcript into it would blur the dense/keyword match
+    # against whatever earlier turns happened to mention, not just the
+    # current question. retrieve_hybrid raises plain ValueError (not a
+    # RagError) on empty query and returns [] rather than raising when
+    # nothing is found; normalize both to the same RagError-based contract
+    # the dense path already had.
     try:
-        chunks = retrieve_hybrid(retrieval_query)
+        chunks = retrieve_hybrid(query)
     except ValueError as e:
         raise EmptyQueryError(str(e)) from e
 
     if not chunks:
         raise InsufficientRetrievalError("No relevant chunks found for this query")
 
-    prompt = build_prompt(query, chunks)
-
-    if history:
-        history_text = "\n".join(
-            f"{turn['role']}: {turn['content']}" for turn in history[-4:]
-        )
-        prompt = (
-            f"{prompt}\n\n"
-            f"RECENT CONVERSATION:\n{history_text}\n"
-        )
+    # Conversation history is generation context, not a retrieval signal:
+    # build_prompt() places it in a "RECENT CONVERSATION" section BEFORE
+    # "USER QUESTION:"/"ANSWER:" so it can never bury the model's actual
+    # generation cue behind more text (the previous version of this
+    # function appended history after the prompt's trailing "ANSWER:").
+    prompt = build_prompt(query, chunks, history=history, disable_benchmark_scope=True)
 
     answer = generate(prompt)
 

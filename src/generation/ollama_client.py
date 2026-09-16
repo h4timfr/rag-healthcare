@@ -50,10 +50,14 @@ def get_status() -> dict:
     return {"ready": True, "detail": f"Ready ({config.OLLAMA_MODEL})"}
 
 
-def _generate_request(prompt: str, stream: bool):
+def _generate_request(prompt: str, stream: bool, num_predict: int | None = None):
     """Shared request body/options for every /api/generate call (blocking,
     timed, and streaming) - keeps the model/prompt/options identical across
     all three so none of them can silently drift apart from the others.
+
+    `num_predict` overrides config.OLLAMA_NUM_PREDICT for this one request
+    (e.g. app.py's larger multi-document budget); omitted (the default),
+    every caller gets the exact same single-document budget as before.
     """
     return requests.post(
         f"{config.OLLAMA_HOST}/api/generate",
@@ -65,7 +69,7 @@ def _generate_request(prompt: str, stream: bool):
             "options": {
                 "temperature": config.OLLAMA_TEMPERATURE,
                 "top_p": config.OLLAMA_TOP_P,
-                "num_predict": config.OLLAMA_NUM_PREDICT,
+                "num_predict": num_predict if num_predict is not None else config.OLLAMA_NUM_PREDICT,
             },
         },
         timeout=120,
@@ -89,11 +93,11 @@ def _extract_timing(data: dict) -> dict:
     }
 
 
-def generate(prompt: str) -> str:
+def generate(prompt: str, num_predict: int | None = None) -> str:
     """Send a prompt to the local Ollama model and return the generated text."""
     check_ollama_available()
     try:
-        resp = _generate_request(prompt, stream=False)
+        resp = _generate_request(prompt, stream=False, num_predict=num_predict)
         resp.raise_for_status()
     except requests.RequestException as e:
         raise OllamaUnavailableError(f"Ollama generation request failed: {e}") from e
@@ -104,7 +108,7 @@ def generate(prompt: str) -> str:
     return answer
 
 
-def generate_with_timing(prompt: str) -> tuple[str, dict]:
+def generate_with_timing(prompt: str, num_predict: int | None = None) -> tuple[str, dict]:
     """Same request/response as generate(), but also returns Ollama's own
     reported timing breakdown (see _extract_timing). Used by the profiling
     CLI (scripts/profile_query.py) - kept separate from generate() so every
@@ -113,7 +117,7 @@ def generate_with_timing(prompt: str) -> tuple[str, dict]:
     """
     check_ollama_available()
     try:
-        resp = _generate_request(prompt, stream=False)
+        resp = _generate_request(prompt, stream=False, num_predict=num_predict)
         resp.raise_for_status()
     except requests.RequestException as e:
         raise OllamaUnavailableError(f"Ollama generation request failed: {e}") from e
@@ -125,7 +129,7 @@ def generate_with_timing(prompt: str) -> tuple[str, dict]:
     return answer, _extract_timing(data)
 
 
-def generate_stream(prompt: str, result: dict | None = None):
+def generate_stream(prompt: str, result: dict | None = None, num_predict: int | None = None):
     """Stream generated text from Ollama's /api/generate (stream=True).
 
     Yields plain-text chunks as they arrive, so a caller like Streamlit's
@@ -136,13 +140,16 @@ def generate_stream(prompt: str, result: dict | None = None):
     `result["timing"]` (see _extract_timing) - mirrors retrieve_hybrid's
     `timing` out-param pattern used elsewhere in this codebase.
 
+    `num_predict` overrides config.OLLAMA_NUM_PREDICT for this request (see
+    _generate_request) - app.py uses this for multi-document answers.
+
     Raises OllamaUnavailableError if the server can't be reached, the
     stream is interrupted/unparseable partway through, or the assembled
     answer ends up empty - the same failure contract as generate().
     """
     check_ollama_available()
     try:
-        resp = _generate_request(prompt, stream=True)
+        resp = _generate_request(prompt, stream=True, num_predict=num_predict)
         resp.raise_for_status()
     except requests.RequestException as e:
         raise OllamaUnavailableError(f"Ollama generation request failed: {e}") from e

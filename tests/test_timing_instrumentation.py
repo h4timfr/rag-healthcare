@@ -134,7 +134,7 @@ def test_answer_question_still_works_after_refactor(monkeypatch):
 
 
 def test_stream_with_ttft_records_time_to_first_token(monkeypatch):
-    def fake_generate_stream(prompt, result=None):
+    def fake_generate_stream(prompt, result=None, num_predict=None):
         if result is not None:
             result["answer"] = "hello world"
             result["timing"] = {"eval_ms": 1.0}
@@ -156,7 +156,7 @@ def test_stream_with_ttft_records_time_to_first_token(monkeypatch):
 def test_stream_with_ttft_propagates_errors(monkeypatch):
     from src.exceptions import OllamaUnavailableError
 
-    def failing_stream(prompt, result=None):
+    def failing_stream(prompt, result=None, num_predict=None):
         raise OllamaUnavailableError("boom")
         yield  # pragma: no cover - unreachable, makes this a generator
 

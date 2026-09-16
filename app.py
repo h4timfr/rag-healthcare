@@ -179,11 +179,44 @@ def group_sources(sources: list[dict]) -> list[dict]:
     return [{"source": name, "pages": sorted(pages_by_source[name])} for name in order]
 
 
+def build_document_inventory(documents: list[dict], selected_document_ids) -> list[dict]:
+    """The {document_id, source, page_count} inventory for the multi-document
+    prompt - built ONLY from documents whose id is in selected_document_ids,
+    in `documents`' own order, so an unselected (or since-deleted) document
+    can never reach the generation context. Returns [] if nothing selected.
+    """
+    return [
+        {"document_id": d["document_id"], "source": d["source"], "page_count": d.get("page_count")}
+        for d in documents
+        if d["document_id"] in selected_document_ids
+    ]
+
+
+def resolve_retrieval_top_k(analysis_scope: str, selected_document_ids) -> int:
+    """How many chunks retrieve_hybrid() should keep from its fused ranking
+    for this turn.
+
+    Active-document scope always keeps exactly config.TOP_K - single-document
+    retrieval behavior is unchanged. "Selected documents" scope widens it to
+    TOP_K * (number of selected documents), so a multi-document
+    summary/comparison has a real chance of surfacing evidence from every
+    selected document instead of a flat top-TOP_K list being dominated by
+    whichever one or two documents rank highest overall. FAISS, FTS5, RRF
+    weights, and candidate_k are all untouched by this - it only changes how
+    many results are kept from the very end of the existing fused ranking.
+    """
+    if analysis_scope == "selected" and selected_document_ids:
+        return config.TOP_K * len(selected_document_ids)
+    return config.TOP_K
+
+
 def retrieve_and_build_prompt(
     query: str,
     top_k: int = config.TOP_K,
     document_id: str | None = None,
     timing: dict | None = None,
+    document_inventory: list[dict] | None = None,
+    history: list[dict] | None = None,
 ) -> tuple[list[dict], str]:
     """Hybrid retrieval -> prompt construction (no generation).
 
@@ -195,6 +228,20 @@ def retrieve_and_build_prompt(
     If `timing` is given, it's populated in place with retrieve_hybrid's own
     `embedding_ms`/`dense_ms`/`keyword_ms`/`fusion_ms` breakdown plus this
     function's own `prompt_build_ms`.
+
+    `document_inventory` (optional) is forwarded to build_prompt() as-is -
+    see its docstring. Retrieval itself (`document_id`/top_k/scoring) is
+    completely unaffected by it; it only changes how the already-retrieved
+    chunks are turned into a prompt.
+
+    `history` (optional) is prior conversation turns, forwarded to
+    build_prompt() for GENERATION context only - retrieve_hybrid() above
+    only ever sees the clean `query` string, never history, so conversation
+    context can never blur retrieval matching.
+
+    Always disables prompt_builder's benchmark-specific target-scope
+    detection (see build_prompt's docstring): this is the app's real
+    production answer path, not the old project benchmark.
     """
     # timing is only passed through when requested, so existing callers/mocks
     # of retrieve_hybrid() with a narrower signature (no `timing` kwarg) keep
@@ -212,7 +259,13 @@ def retrieve_and_build_prompt(
         raise InsufficientRetrievalError("No relevant chunks found for this query")
 
     t0 = time.perf_counter()
-    prompt = build_prompt(query, chunks)
+    prompt = build_prompt(
+        query,
+        chunks,
+        document_inventory=document_inventory,
+        history=history,
+        disable_benchmark_scope=True,
+    )
     if timing is not None:
         timing["prompt_build_ms"] = (time.perf_counter() - t0) * 1000
 
@@ -674,23 +727,46 @@ def render_timing(timing: dict) -> None:
         st.caption(f"**Total end-to-end: {timing.get('total_ms', 0.0):.0f} ms**")
 
 
+def _render_evidence_chunks(chunks: list[dict]) -> None:
+    for i, chunk in enumerate(chunks, start=1):
+        st.markdown(f"**[{chunk['rank']}] {chunk['source']} - page {chunk['page']}**")
+        st.text(chunk["text"])
+        if i < len(chunks):
+            st.divider()
+
+
 def render_evidence(chunks: list[dict]) -> None:
+    """Single-document mode (active-document scope, or "selected" with all
+    evidence from one document) always has exactly one distinct source, so
+    this renders identically to before: one flat, rank-ordered list.
+    Multi-document answers (more than one distinct source among the
+    retrieved chunks) instead group evidence by document, each chunk still
+    labeled with its citation number ([N] = its rank from retrieve_hybrid,
+    matching the number the model was given in the prompt - see
+    prompt_builder.build_multi_document_context), so a citation in the
+    answer always points at the same chunk here regardless of display order.
+    """
     with st.expander(f"Retrieved evidence ({len(chunks)} chunks)"):
-        for i, chunk in enumerate(chunks, start=1):
-            st.markdown(f"**[{i}] {chunk['source']} - page {chunk['page']}**")
-            st.text(chunk["text"])
-            if i < len(chunks):
+        distinct_sources = list(dict.fromkeys(c["source"] for c in chunks))
+        if len(distinct_sources) <= 1:
+            _render_evidence_chunks(chunks)
+            return
+
+        for i, source in enumerate(distinct_sources):
+            if i > 0:
                 st.divider()
+            st.markdown(f"**{source}**")
+            _render_evidence_chunks([c for c in chunks if c["source"] == source])
 
 
-def _stream_with_ttft(prompt: str, gen_result: dict, timing: dict):
+def _stream_with_ttft(prompt: str, gen_result: dict, timing: dict, num_predict: int | None = None):
     """Wrap generate_stream() to also record time-to-first-token into
     `timing` (UI-only instrumentation; generate_stream itself stays
     display-agnostic and reusable from non-Streamlit callers).
     """
     start = time.perf_counter()
     first_token = True
-    for token in generate_stream(prompt, result=gen_result):
+    for token in generate_stream(prompt, result=gen_result, num_predict=num_predict):
         if first_token:
             timing["time_to_first_token_ms"] = (time.perf_counter() - start) * 1000
             first_token = False
@@ -719,6 +795,11 @@ def render_chat(
     selected_document_ids = {d for d in selected_document_ids if d in valid_ids}
 
     scope_document_id = resolve_scope_document_ids(analysis_scope, active_document_id, selected_document_ids)
+    # None in active-document mode: build_prompt() then takes its original
+    # single-document path, completely unchanged (see its docstring).
+    document_inventory = (
+        build_document_inventory(documents, selected_document_ids) if analysis_scope == "selected" else None
+    )
 
     if analysis_scope == "selected":
         scope_ready = bool(scope_document_id)
@@ -759,9 +840,19 @@ def render_chat(
     if not query:
         return
 
+    # Snapshot prior turns for generation context BEFORE appending this new
+    # user turn - history is for display and (below) generation context
+    # only; retrieve_and_build_prompt() below is only ever given the clean
+    # `query` string, never this history, so retrieval matching is never
+    # blurred by earlier conversation.
+    prior_history = list(st.session_state["chat_history"])
+
     st.session_state["chat_history"].append({"role": "user", "content": query})
     with st.chat_message("user"):
         st.write(query)
+
+    top_k = resolve_retrieval_top_k(analysis_scope, selected_document_ids)
+    num_predict = config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT if document_inventory else None
 
     with st.chat_message("assistant"):
         timing: dict = {}
@@ -771,8 +862,11 @@ def render_chat(
             try:
                 chunks, prompt = retrieve_and_build_prompt(
                     query,
+                    top_k=top_k,
                     document_id=scope_document_id,
                     timing=timing,
+                    document_inventory=document_inventory,
+                    history=prior_history,
                 )
             except Exception as e:
                 message = friendly_error_message(e)
@@ -784,7 +878,7 @@ def render_chat(
 
         gen_result: dict = {}
         try:
-            answer = st.write_stream(_stream_with_ttft(prompt, gen_result, timing))
+            answer = st.write_stream(_stream_with_ttft(prompt, gen_result, timing, num_predict=num_predict))
         except Exception as e:
             message = friendly_error_message(e)
             st.error(message)

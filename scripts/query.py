@@ -26,7 +26,7 @@ def answer_query(query: str, top_k: int = config.TOP_K):
     if not chunks:
         raise InsufficientRetrievalError("No relevant chunks found for this query")
 
-    prompt = build_prompt(query, chunks)
+    prompt = build_prompt(query, chunks, disable_benchmark_scope=True)
     answer = generate(prompt)
     sources = [{"source": c["source"], "page": c["page"], "score": c["score"]} for c in chunks]
     return answer, sources

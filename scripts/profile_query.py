@@ -44,7 +44,7 @@ def profile_query(query: str, top_k: int = config.TOP_K, document_id: str | None
         raise InsufficientRetrievalError("No relevant chunks found for this query")
 
     t0 = time.perf_counter()
-    prompt = build_prompt(query, chunks)
+    prompt = build_prompt(query, chunks, disable_benchmark_scope=True)
     timing["prompt_build_ms"] = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()

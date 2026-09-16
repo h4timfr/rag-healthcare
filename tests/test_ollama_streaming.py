@@ -155,6 +155,36 @@ def test_generate_stream_sends_keep_alive_and_stream_true(monkeypatch):
     assert captured["stream"] is True
 
 
+def test_generate_stream_without_num_predict_uses_config_default(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json, timeout, stream):
+        captured["json"] = json
+        return FakeStreamResponse(_ok_lines(["hi"]))
+
+    monkeypatch.setattr(ollama_client.requests, "post", fake_post)
+
+    list(ollama_client.generate_stream("a prompt"))
+
+    assert captured["json"]["options"]["num_predict"] == ollama_client.config.OLLAMA_NUM_PREDICT
+
+
+def test_generate_stream_num_predict_override_reaches_request(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json, timeout, stream):
+        captured["json"] = json
+        return FakeStreamResponse(_ok_lines(["hi"]))
+
+    monkeypatch.setattr(ollama_client.requests, "post", fake_post)
+
+    list(ollama_client.generate_stream("a prompt", num_predict=768))
+
+    assert captured["json"]["options"]["num_predict"] == 768
+    # overriding num_predict must not touch any other option.
+    assert captured["json"]["options"]["temperature"] == ollama_client.config.OLLAMA_TEMPERATURE
+
+
 # --- generate_with_timing ---------------------------------------------------
 
 

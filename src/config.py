@@ -31,4 +31,9 @@ OLLAMA_MODEL = "llama3.2:3b"
 OLLAMA_TEMPERATURE = 0.1
 OLLAMA_TOP_P = 0.9
 OLLAMA_NUM_PREDICT = 256
+# Multi-document summaries/comparisons cover several documents' evidence in
+# one answer and were getting cut off at the single-document budget above -
+# used only for the Streamlit "Selected documents" scope (see app.py); every
+# single-document answer keeps the default OLLAMA_NUM_PREDICT unchanged.
+OLLAMA_NUM_PREDICT_MULTI_DOCUMENT = 768
 OLLAMA_KEEP_ALIVE = "10m"
