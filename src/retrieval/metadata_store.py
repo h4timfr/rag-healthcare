@@ -55,6 +55,13 @@ class MetadataStore:
 
     @contextmanager
     def _connection(self, create: bool = False):
+        """One connection = one transaction: every statement executed by the
+        caller through `conn` inside this block commits together at the end,
+        or - if anything raises - is rolled back together and none of it is
+        persisted. This is what makes insert_chunks() atomic: it just runs
+        its whole loop inside one `_connection()` block instead of one per
+        chunk (see insert_chunk()/insert_chunks() below).
+        """
         if not create and not Path(self.db_path).exists():
             raise DatabaseNotFoundError(
                 f"SQLite metadata database not found at '{self.db_path}'. Run ingestion first."
@@ -66,6 +73,9 @@ class MetadataStore:
         try:
             yield conn
             conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 
@@ -76,28 +86,49 @@ class MetadataStore:
         page: int,
         text: str,
     ) -> int:
-        """Insert a chunk into SQLite and the keyword index."""
+        """Insert a single chunk into SQLite and the keyword index, committed
+        immediately. Kept for callers (and existing tests) that genuinely
+        want to insert one chunk at a time; ingestion of a whole document
+        should use insert_chunks() instead so all of its chunks share one
+        transaction - see that method's docstring for why.
+        """
+        return self.insert_chunks(document_id, source, [(page, text)])[0]
+
+    def insert_chunks(
+        self,
+        document_id: str,
+        source: str,
+        chunks: list[tuple[int, str]],
+    ) -> list[int]:
+        """Insert every chunk of one document - `chunks` as a list of
+        (page, text) pairs, in order - inside a single transaction.
+
+        Either all chunks are committed, or (if any insert fails partway
+        through) none are: this is what makes a document ingestion atomic
+        from SQLite's perspective. Before this existed, ingestion inserted
+        one chunk at a time via insert_chunk(), each committing on its own;
+        a failure partway through a document left it partially indexed, and
+        a later re-ingestion attempt would see document_chunk_count() > 0
+        and skip re-ingesting the (incomplete) document entirely.
+
+        Returns the resulting chunk_ids, in the same order as `chunks`.
+        """
+        chunk_ids = []
         with self._connection(create=True) as conn:
-            cur = conn.execute(
-                "INSERT INTO chunks (document_id, source, page, text, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (
-                    document_id,
-                    source,
-                    page,
-                    text,
-                    datetime.now(timezone.utc).isoformat(),
-                ),
-            )
-
-            chunk_id = cur.lastrowid
-
-            conn.execute(
-                "INSERT INTO chunks_fts (chunk_id, text) VALUES (?, ?)",
-                (chunk_id, text),
-            )
-
-            return chunk_id
+            created_at = datetime.now(timezone.utc).isoformat()
+            for page, text in chunks:
+                cur = conn.execute(
+                    "INSERT INTO chunks (document_id, source, page, text, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (document_id, source, page, text, created_at),
+                )
+                chunk_id = cur.lastrowid
+                conn.execute(
+                    "INSERT INTO chunks_fts (chunk_id, text) VALUES (?, ?)",
+                    (chunk_id, text),
+                )
+                chunk_ids.append(chunk_id)
+        return chunk_ids
 
     def get_chunks(self, chunk_ids: list[int]) -> dict[int, dict]:
         """Resolve a list of chunk_ids to their stored metadata/text."""
@@ -193,6 +224,29 @@ class MetadataStore:
                 f"SELECT chunk_id FROM chunks "
                 f"WHERE document_id = ? AND chunk_id IN ({placeholders})",
                 [document_id, *chunk_ids],
+            ).fetchall()
+
+        return {row["chunk_id"] for row in rows}
+
+    def filter_chunk_ids_by_documents(self, chunk_ids: list[int], document_ids: list[str]) -> set[int]:
+        """Same as filter_chunk_ids_by_document, but scopes to a SET of
+        documents (multi-document analysis mode) instead of exactly one -
+        used by retrieve_hybrid() whenever document_id is given as a list.
+        SQLite metadata remains the sole authority for which chunk_ids
+        belong to which documents; FAISS/FTS5 candidates are always
+        post-filtered against it before RRF fusion, exactly as the
+        single-document path already does.
+        """
+        if not chunk_ids or not document_ids:
+            return set()
+
+        with self._connection() as conn:
+            chunk_placeholders = ",".join("?" * len(chunk_ids))
+            doc_placeholders = ",".join("?" * len(document_ids))
+            rows = conn.execute(
+                f"SELECT chunk_id FROM chunks "
+                f"WHERE document_id IN ({doc_placeholders}) AND chunk_id IN ({chunk_placeholders})",
+                [*document_ids, *chunk_ids],
             ).fetchall()
 
         return {row["chunk_id"] for row in rows}

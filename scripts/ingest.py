@@ -63,15 +63,15 @@ def ingest_pdf(pdf_path: str, db_path: str | None = None, faiss_index_path: str 
 
     embeddings = embed_texts([c.text for c in chunks])
 
-    chunk_ids = [
-        store.insert_chunk(
-            document_id=document_id,
-            source=Path(pdf_path).name,
-            page=chunk.page,
-            text=chunk.text,
-        )
-        for chunk in chunks
-    ]
+    # All of this document's chunks are inserted in one SQLite transaction
+    # (see MetadataStore.insert_chunks): if anything fails partway through,
+    # none of them are committed, so a retry never sees a partial document
+    # and skip re-ingestion because of it.
+    chunk_ids = store.insert_chunks(
+        document_id=document_id,
+        source=Path(pdf_path).name,
+        chunks=[(chunk.page, chunk.text) for chunk in chunks],
+    )
 
     index.add(embeddings, np.array(chunk_ids, dtype="int64"))
     index.save()

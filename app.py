@@ -9,6 +9,7 @@ prompt, or generation logic is reimplemented here.
 import shutil
 import sys
 import tempfile
+import time
 from html import escape
 from pathlib import Path
 
@@ -26,7 +27,12 @@ from src.exceptions import (
     OllamaUnavailableError,
     RagError,
 )
-from src.generation.ollama_client import generate, get_status as get_ollama_status
+from src.generation.ollama_client import (
+    generate,
+    generate_stream,
+    get_status as get_ollama_status,
+    warm_up as warm_up_ollama,
+)
 from src.generation.prompt_builder import build_prompt
 from src.retrieval.faiss_index import FaissIndex
 from src.retrieval.hybrid_retriever import retrieve_hybrid
@@ -173,6 +179,69 @@ def group_sources(sources: list[dict]) -> list[dict]:
     return [{"source": name, "pages": sorted(pages_by_source[name])} for name in order]
 
 
+def retrieve_and_build_prompt(
+    query: str,
+    top_k: int = config.TOP_K,
+    document_id: str | None = None,
+    timing: dict | None = None,
+) -> tuple[list[dict], str]:
+    """Hybrid retrieval -> prompt construction (no generation).
+
+    Split out of answer_question() so the Streamlit UI can run this part
+    (fast, ~tens of ms) under a brief spinner and then stream the slow part
+    (generation) separately, while CLI callers that don't need streaming
+    (scripts/query.py, chat.py) keep using answer_question() unchanged.
+
+    If `timing` is given, it's populated in place with retrieve_hybrid's own
+    `embedding_ms`/`dense_ms`/`keyword_ms`/`fusion_ms` breakdown plus this
+    function's own `prompt_build_ms`.
+    """
+    # timing is only passed through when requested, so existing callers/mocks
+    # of retrieve_hybrid() with a narrower signature (no `timing` kwarg) keep
+    # working unchanged - see tests/test_app_helpers.py's fake_retrieve_hybrid.
+    retrieve_kwargs = {"top_k": top_k, "document_id": document_id}
+    if timing is not None:
+        retrieve_kwargs["timing"] = timing
+
+    try:
+        chunks = retrieve_hybrid(query, **retrieve_kwargs)
+    except ValueError as e:
+        raise EmptyQueryError(str(e)) from e
+
+    if not chunks:
+        raise InsufficientRetrievalError("No relevant chunks found for this query")
+
+    t0 = time.perf_counter()
+    prompt = build_prompt(query, chunks)
+    if timing is not None:
+        timing["prompt_build_ms"] = (time.perf_counter() - t0) * 1000
+
+    return chunks, prompt
+
+
+def resolve_scope_document_ids(
+    analysis_scope: str,
+    active_document_id: str | None,
+    selected_document_ids,
+) -> str | list[str] | None:
+    """Translate the sidebar's "Analysis scope" selection into the
+    document_id argument for retrieve_and_build_prompt()/retrieve_hybrid():
+
+    - "active": the single active document (str, or None if none is active)
+      - unchanged single-document isolation behavior, regardless of
+        whatever is left over in selected_document_ids from a previous
+        "selected" session, so switching back to Active document always
+        restores isolation.
+    - "selected": a sorted list of the chosen document_ids - empty if
+      nothing is selected. Callers must treat an empty list as "cannot
+      query yet", not as "no filter": retrieve_hybrid() returns no results
+      for an empty list rather than silently searching everything.
+    """
+    if analysis_scope == "selected":
+        return sorted(selected_document_ids)
+    return active_document_id
+
+
 def answer_question(query: str, top_k: int = config.TOP_K, document_id: str | None = None) -> dict:
     """Hybrid retrieval -> prompt construction -> Ollama generation.
 
@@ -181,15 +250,7 @@ def answer_question(query: str, top_k: int = config.TOP_K, document_id: str | No
     accept an optional document_id so retrieval can be scoped to the active
     document instead of the whole corpus.
     """
-    try:
-        chunks = retrieve_hybrid(query, top_k=top_k, document_id=document_id)
-    except ValueError as e:
-        raise EmptyQueryError(str(e)) from e
-
-    if not chunks:
-        raise InsufficientRetrievalError("No relevant chunks found for this query")
-
-    prompt = build_prompt(query, chunks)
+    chunks, prompt = retrieve_and_build_prompt(query, top_k=top_k, document_id=document_id)
     answer = generate(prompt)
     sources = [{"source": c["source"], "page": c["page"], "score": c["score"]} for c in chunks]
     return {"answer": answer, "sources": sources, "chunks": chunks}
@@ -479,6 +540,7 @@ def _cancel_delete() -> None:
 def _confirm_delete(doc_id: str, active_id: str | None) -> None:
     delete_document(doc_id)
     st.session_state.pop("pending_delete_id", None)
+    st.session_state.setdefault("selected_document_ids", set()).discard(doc_id)
     remaining = list_indexed_documents()
     fallback_request = active_id if active_id != doc_id else None
     st.session_state["active_document_id"] = resolve_active_document_id(remaining, fallback_request)
@@ -504,6 +566,42 @@ def render_theme_toggle() -> None:
     st.session_state["theme"] = "dark" if is_dark else "light"
 
 
+def render_analysis_scope(documents: list[dict]) -> None:
+    """"Analysis scope" selector: Active document (default, single-document
+    isolation, unchanged) or Selected documents (an explicit, opt-in subset
+    the user checks off - never "everything" implicitly).
+    """
+    if not documents:
+        return
+
+    st.divider()
+    st.subheader("Analysis scope")
+    st.radio(
+        "Analysis scope",
+        options=["active", "selected"],
+        format_func=lambda v: "Active document" if v == "active" else "Selected documents",
+        key="analysis_scope",
+        label_visibility="collapsed",
+    )
+
+    if st.session_state["analysis_scope"] != "selected":
+        return
+
+    selected = st.session_state.setdefault("selected_document_ids", set())
+    for doc in documents:
+        doc_id = doc["document_id"]
+        checked = st.checkbox(doc["source"], value=doc_id in selected, key=f"scope_select_{doc_id}")
+        if checked:
+            selected.add(doc_id)
+        else:
+            selected.discard(doc_id)
+
+    if selected:
+        st.caption(f"**{len(selected)} document(s) selected**")
+    else:
+        st.warning("Select at least one document to ask a question.")
+
+
 def render_sidebar(documents: list[dict], active_id: str | None) -> None:
     render_theme_toggle()
     render_status()
@@ -517,13 +615,7 @@ def render_sidebar(documents: list[dict], active_id: str | None) -> None:
     st.subheader("Documents")
     render_document_library(documents, active_id)
 
-    if len(documents) > 1:
-        st.divider()
-        st.checkbox(
-            "Ask across all documents",
-            key="cross_document_mode",
-            help="When off (default), questions are answered using only the active document.",
-        )
+    render_analysis_scope(documents)
 
     st.divider()
     if st.button("Clear chat", use_container_width=True):
@@ -548,6 +640,40 @@ def render_sources(sources: list[dict]) -> None:
         st.caption(f"• {group['source']} — {word} {', '.join(str(p) for p in pages)}")
 
 
+def render_timing(timing: dict) -> None:
+    """Per-turn, collapsed-by-default performance breakdown - opt-in detail,
+    not a persistent log: nothing here renders unless the user expands it.
+    """
+    with st.expander("⏱️ Performance"):
+        retrieval_ms = sum(
+            timing.get(k, 0.0)
+            for k in ("embedding_ms", "dense_ms", "keyword_ms", "fusion_ms")
+        )
+        st.caption(f"Retrieval: {retrieval_ms:.0f} ms total")
+        st.caption(
+            f"  • query embedding: {timing.get('embedding_ms', 0.0):.1f} ms  ·  "
+            f"dense (FAISS): {timing.get('dense_ms', 0.0):.1f} ms  ·  "
+            f"keyword (FTS5): {timing.get('keyword_ms', 0.0):.1f} ms  ·  "
+            f"fusion: {timing.get('fusion_ms', 0.0):.1f} ms"
+        )
+        st.caption(f"Prompt construction: {timing.get('prompt_build_ms', 0.0):.1f} ms")
+
+        gen = timing.get("generation", {})
+        if gen:
+            st.caption(
+                f"Ollama - model load: {gen.get('load_ms', 0.0):.0f} ms  ·  "
+                f"prompt eval: {gen.get('prompt_eval_ms', 0.0):.0f} ms  ·  "
+                f"generation: {gen.get('eval_ms', 0.0):.0f} ms"
+            )
+            if gen.get("completion_tokens"):
+                st.caption(f"  ({gen['completion_tokens']} tokens generated)")
+
+        if timing.get("time_to_first_token_ms") is not None:
+            st.caption(f"Time to first token: {timing['time_to_first_token_ms']:.0f} ms")
+
+        st.caption(f"**Total end-to-end: {timing.get('total_ms', 0.0):.0f} ms**")
+
+
 def render_evidence(chunks: list[dict]) -> None:
     with st.expander(f"Retrieved evidence ({len(chunks)} chunks)"):
         for i, chunk in enumerate(chunks, start=1):
@@ -555,6 +681,20 @@ def render_evidence(chunks: list[dict]) -> None:
             st.text(chunk["text"])
             if i < len(chunks):
                 st.divider()
+
+
+def _stream_with_ttft(prompt: str, gen_result: dict, timing: dict):
+    """Wrap generate_stream() to also record time-to-first-token into
+    `timing` (UI-only instrumentation; generate_stream itself stays
+    display-agnostic and reusable from non-Streamlit callers).
+    """
+    start = time.perf_counter()
+    first_token = True
+    for token in generate_stream(prompt, result=gen_result):
+        if first_token:
+            timing["time_to_first_token_ms"] = (time.perf_counter() - start) * 1000
+            first_token = False
+        yield token
 
 
 def render_empty_state() -> None:
@@ -565,13 +705,38 @@ def render_empty_state() -> None:
     )
 
 
-def render_chat(active_document_id: str | None, documents: list[dict], cross_document: bool) -> None:
-    if cross_document:
-        st.info(f"Chatting across **all {len(documents)} documents**")
-    elif active_document_id:
-        active_doc = next((d for d in documents if d["document_id"] == active_document_id), None)
-        if active_doc:
-            st.info(f"Chatting with: **{active_doc['source']}**")
+def render_chat(
+    documents: list[dict],
+    active_document_id: str | None,
+    analysis_scope: str,
+    selected_document_ids,
+) -> None:
+    # Defensive intersection against what's actually indexed right now, so a
+    # deleted or otherwise stale id can never linger in the query scope -
+    # deletion already prunes this set too (see _confirm_delete), this is
+    # belt-and-suspenders for "unselected/deleted document never appears".
+    valid_ids = {d["document_id"] for d in documents}
+    selected_document_ids = {d for d in selected_document_ids if d in valid_ids}
+
+    scope_document_id = resolve_scope_document_ids(analysis_scope, active_document_id, selected_document_ids)
+
+    if analysis_scope == "selected":
+        scope_ready = bool(scope_document_id)
+        if scope_ready:
+            names = ", ".join(d["source"] for d in documents if d["document_id"] in selected_document_ids)
+            st.info(f"Chatting with **{len(scope_document_id)} selected documents**: {names}")
+        placeholder = (
+            f"Ask a question about the {len(scope_document_id)} selected documents..."
+            if scope_ready
+            else "Select at least one document to begin..."
+        )
+    else:
+        scope_ready = scope_document_id is not None
+        if scope_ready:
+            active_doc = next((d for d in documents if d["document_id"] == scope_document_id), None)
+            if active_doc:
+                st.info(f"Chatting with: **{active_doc['source']}**")
+        placeholder = "Ask a question about the active document..."
 
     for turn in st.session_state["chat_history"]:
         with st.chat_message(turn["role"]):
@@ -580,12 +745,17 @@ def render_chat(active_document_id: str | None, documents: list[dict], cross_doc
                 render_sources(turn["sources"])
             if turn["role"] == "assistant" and turn.get("chunks"):
                 render_evidence(turn["chunks"])
+            if turn["role"] == "assistant" and turn.get("timing"):
+                render_timing(turn["timing"])
 
-    if not active_document_id and not cross_document:
-        render_empty_state()
+    if not scope_ready:
+        if analysis_scope == "selected" and documents:
+            st.info("Select at least one document in the sidebar to start asking questions.")
+        else:
+            render_empty_state()
         return
 
-    query = st.chat_input("Ask a question about the active document...")
+    query = st.chat_input(placeholder)
     if not query:
         return
 
@@ -594,10 +764,15 @@ def render_chat(active_document_id: str | None, documents: list[dict], cross_doc
         st.write(query)
 
     with st.chat_message("assistant"):
-        with st.spinner("Retrieving evidence and generating an answer..."):
+        timing: dict = {}
+        turn_start = time.perf_counter()
+
+        with st.spinner("Retrieving evidence..."):
             try:
-                result = answer_question(
-                    query, document_id=None if cross_document else active_document_id
+                chunks, prompt = retrieve_and_build_prompt(
+                    query,
+                    document_id=scope_document_id,
+                    timing=timing,
                 )
             except Exception as e:
                 message = friendly_error_message(e)
@@ -607,16 +782,37 @@ def render_chat(active_document_id: str | None, documents: list[dict], cross_doc
                 )
                 return
 
-        st.write(result["answer"])
-        render_sources(result["sources"])
-        render_evidence(result["chunks"])
+        gen_result: dict = {}
+        try:
+            answer = st.write_stream(_stream_with_ttft(prompt, gen_result, timing))
+        except Exception as e:
+            message = friendly_error_message(e)
+            st.error(message)
+            st.session_state["chat_history"].append(
+                {"role": "assistant", "content": f"Error: {message}"}
+            )
+            return
+
+        # Prefer the out-param's stripped text (matches generate()'s
+        # normalization exactly); st.write_stream's return value is an
+        # equivalent fallback if generation completed but somehow didn't
+        # populate the out-param.
+        answer = gen_result.get("answer", answer)
+        timing["generation"] = gen_result.get("timing", {})
+        timing["total_ms"] = (time.perf_counter() - turn_start) * 1000
+
+        sources = [{"source": c["source"], "page": c["page"], "score": c["score"]} for c in chunks]
+        render_sources(sources)
+        render_evidence(chunks)
+        render_timing(timing)
 
     st.session_state["chat_history"].append(
         {
             "role": "assistant",
-            "content": result["answer"],
-            "sources": result["sources"],
-            "chunks": result["chunks"],
+            "content": answer,
+            "sources": sources,
+            "chunks": chunks,
+            "timing": timing,
         }
     )
 
@@ -627,7 +823,8 @@ def main() -> None:
     st.session_state.setdefault("chat_history", [])
     st.session_state.setdefault("active_document_id", None)
     st.session_state.setdefault("theme", "dark")
-    st.session_state.setdefault("cross_document_mode", False)
+    st.session_state.setdefault("analysis_scope", "active")
+    st.session_state.setdefault("selected_document_ids", set())
 
     # The toggle widget (rendered later, inside the sidebar) is the source of
     # truth once it exists. Resolving "theme" from it here - before the CSS
@@ -644,11 +841,24 @@ def main() -> None:
     active_id = resolve_active_document_id(documents, st.session_state.get("active_document_id"))
     st.session_state["active_document_id"] = active_id
 
+    # Fire-and-forget model warm-up, once per session, as soon as there's a
+    # document to chat about - gives Ollama a head start loading the model
+    # while the user is still reading/selecting, so their first real
+    # question is less likely to pay the full cold-load latency. Does not
+    # change keep_alive, so an idle model still unloads as configured.
+    if active_id and not st.session_state.get("model_warmed"):
+        warm_up_ollama()
+        st.session_state["model_warmed"] = True
+
     with st.sidebar:
         render_sidebar(documents, active_id)
 
-    cross_document = bool(documents) and len(documents) > 1 and st.session_state.get("cross_document_mode", False)
-    render_chat(active_id, documents, cross_document)
+    render_chat(
+        documents,
+        active_id,
+        st.session_state.get("analysis_scope", "active"),
+        st.session_state.get("selected_document_ids", set()),
+    )
 
 
 if __name__ == "__main__":
