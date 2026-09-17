@@ -35,8 +35,18 @@ def _chunk(document_id, source, page, text, rank, score=0.1):
 # --- 1. multi-document retrieval depth --------------------------------------
 
 
-def test_resolve_retrieval_top_k_selected_scales_with_document_count():
-    assert app.resolve_retrieval_top_k("selected", {"d1", "d2", "d3"}) == config.TOP_K * 3
+def test_resolve_retrieval_top_k_selected_narrow_question_is_plain_top_k():
+    """Changed deliberately: this used to widen to TOP_K * document count for
+    every question in selected scope. See the regression tests in
+    test_multi_document_budget.py - that widening produced a 15-chunk prompt
+    in which the model denied a fact held in its own highest-ranked chunk."""
+    assert app.resolve_retrieval_top_k("selected", {"d1", "d2", "d3"}) == config.TOP_K
+
+
+def test_resolve_retrieval_top_k_selected_widens_only_when_balanced():
+    assert app.resolve_retrieval_top_k("selected", {"d1", "d2", "d3"}, balanced=True) == (
+        config.BALANCED_CHUNKS_PER_DOCUMENT * 3
+    )
 
 
 def test_resolve_retrieval_top_k_selected_one_document_is_plain_top_k():
@@ -54,19 +64,38 @@ def test_resolve_retrieval_top_k_active_scope_is_always_plain_top_k():
     assert app.resolve_retrieval_top_k("active", set()) == config.TOP_K
 
 
-def test_retrieve_and_build_prompt_forwards_widened_top_k_to_retrieval(monkeypatch):
+def test_retrieve_and_build_prompt_forwards_the_resolved_top_k_to_retrieval(monkeypatch):
+    """A narrow question keeps the plain budget even with three documents
+    selected; only an each-document/comparison question widens it."""
     captured = {}
 
-    def fake_retrieve_hybrid(query, top_k=5, document_id=None):
+    def fake_retrieve_hybrid(query, top_k=5, document_id=None, **kwargs):
         captured["top_k"] = top_k
         return [_chunk("d1", "a.pdf", 1, "t", 1)]
 
     monkeypatch.setattr(app, "retrieve_hybrid", fake_retrieve_hybrid)
 
-    top_k = app.resolve_retrieval_top_k("selected", {"d1", "d2", "d3"})
-    app.retrieve_and_build_prompt("q", top_k=top_k, document_id=["d1", "d2", "d3"])
+    inventory = [
+        {"document_id": "d1", "source": "a.pdf", "page_count": 1},
+        {"document_id": "d2", "source": "b.pdf", "page_count": 1},
+        {"document_id": "d3", "source": "c.pdf", "page_count": 1},
+    ]
 
-    assert captured["top_k"] == config.TOP_K * 3
+    app.retrieve_and_build_prompt(
+        "What medication was prescribed?",
+        top_k=app.resolve_retrieval_top_k("selected", {"d1", "d2", "d3"}),
+        document_id=["d1", "d2", "d3"],
+        document_inventory=inventory,
+    )
+    assert captured["top_k"] == config.TOP_K
+
+    app.retrieve_and_build_prompt(
+        "Summarize each selected document separately.",
+        top_k=config.TOP_K,
+        document_id=["d1", "d2", "d3"],
+        document_inventory=inventory,
+    )
+    assert captured["top_k"] == config.BALANCED_CHUNKS_PER_DOCUMENT * 3
 
 
 # --- 2. multi-document generation budget ------------------------------------
@@ -237,7 +266,7 @@ def test_benchmark_scope_disabled_by_default_in_production_helper(monkeypatch):
     captured = {}
     real_build_prompt = app.build_prompt
 
-    def spy_build_prompt(query, chunks, document_inventory=None, history=None, disable_benchmark_scope=False):
+    def spy_build_prompt(query, chunks, document_inventory=None, history=None, disable_benchmark_scope=False, **kwargs):
         captured["disable_benchmark_scope"] = disable_benchmark_scope
         return real_build_prompt(
             query, chunks, document_inventory=document_inventory,
@@ -256,7 +285,7 @@ def test_chat_ask_disables_benchmark_scope(monkeypatch):
     captured = {}
     real_build_prompt = chat.build_prompt
 
-    def spy_build_prompt(query, chunks, document_inventory=None, history=None, disable_benchmark_scope=False):
+    def spy_build_prompt(query, chunks, document_inventory=None, history=None, disable_benchmark_scope=False, **kwargs):
         captured["disable_benchmark_scope"] = disable_benchmark_scope
         return real_build_prompt(query, chunks, history=history, disable_benchmark_scope=disable_benchmark_scope)
 
@@ -381,8 +410,8 @@ def test_widened_top_k_surfaces_more_than_plain_top_k_across_documents(tmp_path,
     monkeypatch.setattr(hybrid_retriever, "embed_query", lambda q: np.ones(config.EMBEDDING_DIM, dtype="float32") / np.sqrt(config.EMBEDDING_DIM))
 
     plain_top_k = config.TOP_K
-    widened_top_k = app.resolve_retrieval_top_k("selected", set(doc_ids))
-    assert widened_top_k == plain_top_k * 3
+    widened_top_k = app.resolve_retrieval_top_k("selected", set(doc_ids), balanced=True)
+    assert widened_top_k == config.BALANCED_CHUNKS_PER_DOCUMENT * 3
 
     from src.retrieval.hybrid_retriever import retrieve_hybrid
 

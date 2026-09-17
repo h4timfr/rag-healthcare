@@ -91,6 +91,34 @@ _SUMMARY_PATTERNS = (
     re.compile(r"\bmain (points|purpose|topic)\b"),
 )
 
+# A question that is ONLY a document reference - "what about the third
+# document?", "tell me about the Pediatric Report" - asks for that
+# document's contents and nothing narrower.
+#
+# It needs its own rule because once the reference itself is resolved (by
+# src/retrieval/document_reference.py) there is no question left in the
+# words. Given the factual answer style, llama3.2:3b answered "what about
+# the third document?" by copying the first evidence block back out
+# verbatim, labels and all - it had a document and no question to ask of it.
+# Treating the reference as a request for that document's contents is what
+# the user meant, and the summary style already forbids the regurgitation.
+_REFERENCE_FILLER = (
+    r"(?:the|that|this|those|other|next|last|same|a|an|"
+    r"first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|"
+    r"1st|2nd|3rd|\d+(?:th)?)"
+)
+
+_BARE_DOCUMENT_REFERENCE_PATTERNS = (
+    # "what about the third document?" / "how about that report?"
+    re.compile(
+        rf"^\s*(?:what|how)\s+about\s+(?:{_REFERENCE_FILLER}\s+)*"
+        r"(?:document|report|file|pdf)s?\s*\??\s*$"
+    ),
+    # "tell me about the Pediatric Report." - any reference, but it must be
+    # a document being asked about, not a topic within one.
+    re.compile(r"^\s*tell\s+me\s+about\b.*\b(?:document|report|file|pdf)s?\s*[.?]?\s*$"),
+)
+
 # Deliberately keyword-driven rather than "contains a digit": questions like
 # "the 2-year well check" or "the January 12 visit" carry digits but are
 # ordinary factual questions, and answering them as if a bare number were
@@ -164,6 +192,13 @@ def classify_intent(
         return UNSUPPORTED
     if not q:
         return FACTUAL
+
+    # Checked before follow_up: "what about the second document?" IS a
+    # follow-up, but its answer shape is a summary of that document, and
+    # resolving what it points at is now the reference resolver's job rather
+    # than something the answer style has to talk the model through.
+    if _matches(_BARE_DOCUMENT_REFERENCE_PATTERNS, q):
+        return SUMMARY
 
     if history and _matches(_FOLLOW_UP_PATTERNS, q):
         return FOLLOW_UP

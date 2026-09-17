@@ -35,6 +35,7 @@ from src.generation.ollama_client import (
     warm_up as warm_up_ollama,
 )
 from src.generation.prompt_builder import build_prompt
+from src.retrieval.document_reference import resolve_document_reference
 from src.retrieval.faiss_index import FaissIndex
 from src.retrieval.hybrid_retriever import retrieve_hybrid
 from src.retrieval.metadata_store import MetadataStore
@@ -197,21 +198,44 @@ def build_document_inventory(documents: list[dict], selected_document_ids) -> li
     ]
 
 
-def resolve_retrieval_top_k(analysis_scope: str, selected_document_ids) -> int:
+def resolve_retrieval_top_k(
+    analysis_scope: str, selected_document_ids, balanced: bool = False
+) -> int:
     """How many chunks retrieve_hybrid() should keep from its fused ranking
     for this turn.
 
-    Active-document scope always keeps exactly config.TOP_K - single-document
-    retrieval behavior is unchanged. "Selected documents" scope widens it to
-    TOP_K * (number of selected documents), so a multi-document
-    summary/comparison has a real chance of surfacing evidence from every
-    selected document instead of a flat top-TOP_K list being dominated by
-    whichever one or two documents rank highest overall. FAISS, FTS5, RRF
-    weights, and candidate_k are all untouched by this - it only changes how
-    many results are kept from the very end of the existing fused ranking.
+    Only a question that must cover several documents gets a widened budget,
+    and only up to config.MAX_CONTEXT_CHUNKS. Everything else - including a
+    narrow question asked while several documents are selected - gets exactly
+    config.TOP_K, the same budget it would get about a single document.
+
+    This used to widen to TOP_K * (number of selected documents) for EVERY
+    question asked in "Selected documents" scope. That was a workaround from
+    before retrieval could balance its allocation, and it caused a real
+    production failure: "What medications was the patient discharged on, and
+    what condition was found during the second hospital admission?" asked
+    over three selected documents produced a 15-chunk, 20KB prompt, and the
+    model answered that the evidence did not mention the discharge
+    medications - while the sentence naming them sat in the HIGHEST-ranked
+    chunk of that same prompt. The identical question over the same index
+    answered correctly at 5, 7, 9 and 12 chunks.
+
+    The widening also had it backwards. An each-document or comparison
+    question, which genuinely needs breadth, was getting the same treatment
+    as a narrow factual question, which needs focus - and after balanced
+    allocation arrived, the narrow question was the one left with the larger
+    budget. Breadth now comes from _allocate_by_document() choosing WHICH
+    chunks survive, not from asking for more of them.
+
+    FAISS, FTS5, RRF weights and candidate_k remain untouched: this only
+    decides how many results are kept from the end of the existing fused
+    ranking.
     """
-    if analysis_scope == "selected" and selected_document_ids:
-        return config.TOP_K * len(selected_document_ids)
+    if analysis_scope == "selected" and selected_document_ids and balanced:
+        return min(
+            config.BALANCED_CHUNKS_PER_DOCUMENT * len(selected_document_ids),
+            config.MAX_CONTEXT_CHUNKS,
+        )
     return config.TOP_K
 
 
@@ -234,10 +258,16 @@ def retrieve_and_build_prompt(
     `embedding_ms`/`dense_ms`/`keyword_ms`/`fusion_ms` breakdown plus this
     function's own `prompt_build_ms`.
 
-    `document_inventory` (optional) is forwarded to build_prompt() as-is -
-    see its docstring. It also marks this as a multi-document turn, which is
-    the precondition for document-balanced retrieval below; scoring, the
-    FAISS/FTS5 searches and the RRF fusion are unaffected either way.
+    `document_inventory` (optional) marks this as a multi-document turn, and
+    is forwarded to build_prompt() - see its docstring. It is also the
+    precondition for the two multi-document behaviours below, document
+    reference scoping and balanced allocation; scoring, the FAISS/FTS5
+    searches and the RRF fusion are unaffected by either.
+
+    If the question names one or more of the selected documents, retrieval
+    and the prompt are narrowed to exactly those. The narrowing is always a
+    subset of `document_inventory`, so selected-document isolation holds,
+    and active-document scope never reaches it at all.
 
     For an each-document or comparison question over several selected
     documents, retrieval is asked to balance its allocation across them and
@@ -261,19 +291,50 @@ def retrieve_and_build_prompt(
     if timing is not None:
         retrieve_kwargs["timing"] = timing
 
-    # Document-balanced allocation applies only to a multi-document scope
-    # asked an each-document/comparison question. Same conditional-kwarg
-    # reason as `timing` above, and single-document retrieval never reaches
-    # it at all (document_inventory is None in active-document scope).
-    #
-    # This also replaces the caller's `top_k` for that case, deliberately:
-    # the balanced budget is a property of the retrieval strategy, not of
-    # the call site, and deciding it here is what keeps the Streamlit app
-    # and the product QA harness identical without either having to
-    # remember to mirror the other.
-    if document_inventory and needs_document_balance(query, history=history):
-        retrieve_kwargs["balance_by_document"] = True
-        retrieve_kwargs["top_k"] = config.BALANCED_CHUNKS_PER_DOCUMENT * len(document_inventory)
+    # This function owns the whole multi-document budget decision, and
+    # replaces the caller's `top_k` for it: the budget is a property of the
+    # question and the retrieval strategy, not of the call site, and
+    # deciding it in one place is what keeps the Streamlit app and the
+    # product QA harness identical without either having to mirror the
+    # other. Single-document retrieval never reaches any of this -
+    # document_inventory is None in active-document scope.
+    if document_inventory:
+        # A question that names a document ("the OMC report", "the third
+        # document") is scoped to it before retrieval runs. Filenames appear
+        # in no chunk text, so lexical matching cannot do this - see
+        # src/retrieval/document_reference.py. The resolver only ever
+        # returns entries from this inventory, so scoping can never widen
+        # the selection or resurrect a deleted document, and an ambiguous
+        # reference resolves to nothing and leaves the selection alone.
+        reference = resolve_document_reference(query, document_inventory, history=history)
+        if reference:
+            document_inventory = list(reference.documents)
+            retrieve_kwargs["document_id"] = reference.document_ids
+            if len(document_inventory) == 1:
+                # Narrowed to exactly one document, so this is no longer a
+                # multi-document turn: drop to the single-document prompt,
+                # the same one active-document scope uses.
+                #
+                # Keeping the multi-document prompt here actively misleads
+                # the model. Asked "what about the third document?" with the
+                # evidence correctly narrowed to that document, it read
+                # rules headed "1 documents are selected" alongside a rule
+                # about documents whose evidence was not retrieved, and
+                # answered that the third document was a different file
+                # whose evidence block was empty. The single-document prompt
+                # has no such machinery and answers it correctly.
+                document_inventory = None
+                retrieve_kwargs["top_k"] = config.TOP_K
+
+    if document_inventory:
+        balanced = needs_document_balance(query, history=history) and len(document_inventory) > 1
+        if balanced:
+            # Same conditional-kwarg reason as `timing` above: narrow test
+            # doubles of retrieve_hybrid must keep working.
+            retrieve_kwargs["balance_by_document"] = True
+        retrieve_kwargs["top_k"] = resolve_retrieval_top_k(
+            "selected", document_inventory, balanced=balanced
+        )
 
     try:
         chunks = retrieve_hybrid(query, **retrieve_kwargs)

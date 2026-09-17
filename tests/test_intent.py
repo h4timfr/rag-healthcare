@@ -106,7 +106,7 @@ def test_every_real_dataset_question_classifies_as_its_category():
 def test_follow_up_needs_history_to_be_a_follow_up():
     """The same text is a follow-up mid-conversation and an ordinary
     question as an opening turn - there is nothing to refer back to."""
-    query = "What about the second document?"
+    query = "What about the medications in that report?"
     assert classify_intent(query, history=HISTORY) == FOLLOW_UP
     assert classify_intent(query, history=None) != FOLLOW_UP
 
@@ -115,13 +115,44 @@ def test_follow_up_needs_history_to_be_a_follow_up():
     "query",
     [
         "What did you just say caused that?",
-        "What about the second document?",
-        "How about the other report?",
+        "What about the medications in the second document?",
         "And what else did they find?",
     ],
 )
 def test_follow_up_phrasings_detected_with_history(query):
     assert classify_intent(query, history=HISTORY) == FOLLOW_UP
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What about the second document?",
+        "What about the third document?",
+        "How about the other report?",
+        "What about that report?",
+        "Tell me about the Pediatric Report.",
+    ],
+)
+def test_a_bare_document_reference_asks_for_that_document(query):
+    """A question that is only a document reference has no question left in
+    it once the reference is resolved. Classified factual, the model
+    answered "what about the third document?" by copying the first evidence
+    block back out verbatim; what the user wants is that document's
+    contents. Resolving WHICH document is the reference resolver's job (see
+    tests/test_document_reference.py), not the answer style's."""
+    assert classify_intent(query, history=HISTORY) == SUMMARY
+    assert classify_intent(query, history=None) == SUMMARY
+
+
+def test_a_reference_with_real_content_is_not_a_bare_reference():
+    """"the medications in the second document" asks something specific, so
+    it keeps its follow-up shape rather than becoming a summary."""
+    query = "What about the medications in the second document?"
+    assert classify_intent(query, history=HISTORY) != SUMMARY
+
+
+def test_tell_me_about_a_topic_is_not_a_document_reference():
+    assert classify_intent("Tell me about the patient's medications") == FACTUAL
 
 
 def test_ordinal_in_clinical_content_is_not_a_follow_up_reference():

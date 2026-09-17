@@ -38,6 +38,22 @@ TOP_K = 5
 # chunks.
 BALANCED_CHUNKS_PER_DOCUMENT = 3
 
+# Hard ceiling on how many chunks any single answer is built from.
+#
+# llama3.2:3b stops reliably using evidence it has been given somewhere
+# above this. Measured on a two-part question whose answer sat in the
+# HIGHEST-ranked chunk of the prompt: with three documents selected it was
+# answered correctly at 5, 7, 9 and 12 chunks, and failed at 13, 14 and 15
+# (18.5KB and up), claiming the evidence did not contain a fact that was in
+# its own context. The failure was deterministic across repeated runs.
+#
+# 10 leaves margin below that boundary, sits above the single-document
+# TOP_K, and does not change the current balanced allocation (3 documents x
+# 3 = 9). It exists mainly so the budget cannot grow without limit as more
+# documents are selected - ten selected documents must not ask for fifty
+# chunks.
+MAX_CONTEXT_CHUNKS = 10
+
 # --- Ollama generation ---
 OLLAMA_HOST = "http://localhost:11434"
 OLLAMA_MODEL = "llama3.2:3b"

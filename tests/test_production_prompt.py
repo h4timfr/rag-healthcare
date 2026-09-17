@@ -114,11 +114,15 @@ def test_factual_style_is_direct():
 
 
 def test_follow_up_style_points_at_the_conversation():
+    """A follow-up that asks something specific keeps the follow-up style.
+    A bare document reference ("what about the second document?") no longer
+    does - it is a request for that document's contents, and resolving which
+    document is the reference resolver's job now."""
     history = [
         {"role": "user", "content": "Summarize each selected document."},
         {"role": "assistant", "content": "Pediatric Report.pdf: ..."},
     ]
-    prompt = _production("What about the second document?", history=history)
+    prompt = _production("What about the medications in that report?", history=history)
 
     assert "continues the conversation above" in prompt
     assert "RECENT CONVERSATION:" in prompt

@@ -632,6 +632,7 @@ def build_multi_document_prompt(
         "- Keep each citation ([1], [2], ...) attached to the evidence it came from."
     )
 
+
     resolved_intent = intent_module.classify_intent(query, history=history)
     answer_style = build_answer_style(query, resolved_intent)
 
