@@ -102,6 +102,7 @@ def ingest_uploaded_pdfs(files: list[tuple[str, bytes]]) -> list[dict]:
                     "document_id": None,
                     "chunk_count": None,
                     "degraded_pages": [],
+                    "repaired_pages": [],
                     "error": str(e),
                 }
             )
@@ -113,6 +114,7 @@ def ingest_uploaded_pdfs(files: list[tuple[str, bytes]]) -> list[dict]:
                     "document_id": result["document_id"],
                     "chunk_count": result["chunk_count"],
                     "degraded_pages": result.get("degraded_pages", []),
+                    "repaired_pages": result.get("repaired_pages", []),
                     "error": None,
                 }
             )
@@ -509,12 +511,18 @@ def render_upload_area() -> None:
 
             if result["status"] == "indexed":
                 progress.caption(f"complete - {result['chunk_count']} chunks indexed.")
+                if result.get("repaired_pages"):
+                    st.caption(
+                        f"Page(s) {result['repaired_pages']} had malformed word "
+                        "boundaries and were re-extracted from glyph geometry."
+                    )
                 if result.get("degraded_pages"):
                     st.warning(
                         f"Page(s) {result['degraded_pages']} of **{uploaded_file.name}** "
-                        "extracted without word boundaries, so keyword search and answer "
-                        "quality will be poor for this document. This is a property of "
-                        "the PDF's text layer, not of your question."
+                        "extracted without usable word boundaries and could not be "
+                        "repaired, so keyword search and answer quality will be poor for "
+                        "this document. This is a property of the PDF's text layer, not "
+                        "of your question."
                     )
             elif result["status"] == "skipped":
                 progress.caption(f"skipped - already indexed ({result['chunk_count']} chunks).")

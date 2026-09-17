@@ -136,6 +136,33 @@ don't exist. If the active document is deleted, the active selection falls
 back to the most recently indexed remaining document. A confirmation step is
 required before deletion.
 
+## Extraction quality and repair
+
+PyMuPDF's normal text extraction runs first and its output is kept whenever
+it looks like prose. Each page is measured (mean word length, whitespace
+ratio, control-character ratio), and a page that fails is re-extracted from
+PyMuPDF's geometry-aware word segmentation, which finds word boundaries from
+glyph positions instead of trusting the font's character mapping. The repair
+is kept only when it measurably improves the page, so a page with genuinely
+no separable words stays flagged rather than being quietly replaced. It is
+deterministic and local - no OCR, no model - and it can only move separators,
+never invent words.
+
+This exists because of a real document in this project. One report is a
+subsetted Calibri whose `/Encoding` maps character code 2 to glyph `/g3` and
+code 3 to `/g882` - names that carry no Unicode meaning - while its
+`/ToUnicode` CMap starts at code 0x25 and omits both. Extraction therefore
+emitted U+0002 between every word and U+0003 for every hyphen. Those are not
+whitespace to `str.split()`, so each line collapsed into one token: FTS5
+could not match a keyword inside a 900-character token, the word-based
+chunker saw a whole page as ~40 "words" and never split it, and the model was
+left reading a wall of concatenated text. Repaired, that document's mean word
+length goes from 74-86 characters to 5.2-5.3 and its page count of chunks
+from 4 to 11.
+
+Scanned or image-only PDFs are still unsupported and still fail with an
+explicit error; OCR is deliberately not part of this pipeline.
+
 ## Retrieval: dense vs. hybrid
 
 - **Dense** retrieval embeds the query with the same MiniLM model used for

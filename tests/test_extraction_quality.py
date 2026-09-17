@@ -1,16 +1,23 @@
-"""Tests for degraded-extraction detection (src/ingestion/pdf_extractor.py).
+"""Tests for extraction quality detection and repair
+(src/ingestion/pdf_extractor.py).
 
-Found while verifying a QA dataset premise against the real index: every
-page of one of the three indexed documents extracts as a single run of
-concatenated text ("Iconclude,therefore,thatthestandardofcarewasnotmet"),
-averaging 53-86 characters per token against 4.4-7.0 for the other two.
+Two distinct failure modes are kept apart throughout, because they need
+different answers:
 
-That silently defeats FTS5 keyword matching, defeats the word-based chunker
-(a whole page counts as ~40 "words", so it is never split), and makes the
-model look like it is refusing to answer questions whose evidence is right
-there. It is detected here so it is visible at upload time instead.
+  REPAIRABLE    The separators are present but are not whitespace. The real
+                document that motivated this uses a font whose space glyph
+                maps to character code 2 and whose hyphen maps to code 3,
+                with no ToUnicode table to say so, so extraction returns
+                U+0002 between every word. PyMuPDF's geometry-aware "words"
+                mode finds the boundaries anyway, so this IS recoverable.
 
-Detection only - nothing here repairs the text.
+  UNREPAIRABLE The glyphs really are printed with no gaps. There is nothing
+                to recover, and the detector must keep saying so rather than
+                accepting a reconstruction that is just as bad.
+
+The detector must not be tuned to let the first case pass; it must keep
+failing the second. Both are asserted below, end to end through the real
+extractor.
 """
 
 import pymupdf
@@ -18,20 +25,32 @@ import pytest
 
 from src.ingestion.pdf_extractor import (
     MAX_MEAN_WORD_LENGTH,
+    control_char_ratio,
     degraded_pages,
     extract_pages,
     mean_word_length,
+    quality_problems,
+    repaired_pages,
+    text_statistics,
+    whitespace_ratio,
 )
 
 HEALTHY = (
-    "The patient was seen for a two year well check. The mother reported that "
+    "The patient was seen for a routine checkup. The mother reported that "
     "the child coughs when he runs and has done so for several weeks."
 )
-# The real shape of the failure: punctuation survives, spaces do not.
+# Unrepairable: no separators of any kind between the words.
 DEGRADED = (
     "Iconclude,therefore,thatthestandardofcarewasnotmetinthiscase."
     "3.DeviationFromTheStandardofCare:Failuretoimagetheentireabdominalaorta"
     "intheknownpresenceofthoracoproximalabdominalaorticaneurysm."
+)
+# Repairable: the real defect - U+0002 where a space belongs, U+0003 where a
+# hyphen belongs.
+CONTROL_SEPARATED = (
+    "The\x02patient\x02was\x02discharged\x02on\x02anti\x03arrythmic\x02medication.\x02"
+    "She\x02presented\x02with\x02a\x02two\x03day\x02history\x02of\x02right\x02lower\x02"
+    "quadrant\x02pain\x02and\x02was\x02admitted\x02for\x02observation."
 )
 
 
@@ -110,12 +129,181 @@ def test_real_extraction_of_a_healthy_pdf_is_not_flagged(tmp_path):
 
 
 def test_real_extraction_of_a_spaceless_pdf_is_flagged(tmp_path):
+    """Unrepairable: no gaps between the glyphs, so there is nothing for the
+    fallback to recover. It must stay flagged."""
     pdf = tmp_path / "spaceless.pdf"
     _write_pdf(pdf, DEGRADED)
 
     pages = extract_pages(str(pdf))
 
     assert degraded_pages(pages) == [1]
+    assert repaired_pages(pages) == []
+
+
+# --- the repairable failure: separators present but not whitespace ------------
+
+
+def test_control_separated_pdf_is_repaired_end_to_end(tmp_path):
+    """The real defect. U+0002 between words defeats str.split(), but the
+    glyphs are laid out with real gaps, so word segmentation recovers them."""
+    pdf = tmp_path / "control_separated.pdf"
+    _write_pdf(pdf, CONTROL_SEPARATED)
+
+    pages = extract_pages(str(pdf))
+    text = pages[0]["text"]
+
+    assert repaired_pages(pages) == [1]
+    assert degraded_pages(pages) == []
+    assert "\x02" not in text and "\x03" not in text
+    assert "patient" in text and "discharged" in text
+    assert pages[0]["extraction"] == "words"
+
+
+def test_repair_does_not_invent_or_lose_words(tmp_path):
+    """Every word in the repaired text must be a word PyMuPDF actually found
+    on the page - the fallback moves separators, it does not write text."""
+    pdf = tmp_path / "control_separated.pdf"
+    _write_pdf(pdf, CONTROL_SEPARATED)
+
+    pages = extract_pages(str(pdf))
+    repaired_words = set(pages[0]["text"].split())
+
+    doc = pymupdf.open(str(pdf))
+    pymupdf_words = {w[4] for w in doc[0].get_text("words")}
+    doc.close()
+
+    assert repaired_words == pymupdf_words
+
+
+def test_healthy_pdf_text_is_untouched_by_the_fallback(tmp_path):
+    """No regression: a healthy page never enters the fallback, and its text
+    is exactly what normal extraction produced."""
+    pdf = tmp_path / "healthy.pdf"
+    _write_pdf(pdf, HEALTHY)
+
+    pages = extract_pages(str(pdf))
+
+    assert repaired_pages(pages) == []
+    assert pages[0]["extraction"] == "text"
+
+    doc = pymupdf.open(str(pdf))
+    assert pages[0]["text"] == doc[0].get_text("text")
+    doc.close()
+
+
+def test_page_numbers_and_order_survive_repair(tmp_path):
+    """Page boundaries are preserved: a mixed document keeps 1..N in order,
+    and only the malformed page is repaired."""
+    doc = pymupdf.open()
+    for text in (HEALTHY, CONTROL_SEPARATED, HEALTHY):
+        page = doc.new_page()
+        for i in range(12):
+            page.insert_text((36, 72 + i * 18), text[:90])
+    pdf = tmp_path / "mixed.pdf"
+    doc.save(str(pdf))
+    doc.close()
+
+    pages = extract_pages(str(pdf))
+
+    assert [p["page"] for p in pages] == [1, 2, 3]
+    assert repaired_pages(pages) == [2]
+    assert degraded_pages(pages) == []
+
+
+# --- the quality signals ------------------------------------------------------
+
+
+def test_control_characters_are_their_own_signal():
+    """The signal that generalises: control characters are never valid
+    document text, whatever the mean word length happens to be."""
+    assert "control_characters" in quality_problems(CONTROL_SEPARATED * 3)
+    assert quality_problems(HEALTHY * 3) == []
+
+
+def test_each_failure_mode_reports_its_own_problem_names():
+    assert quality_problems(DEGRADED * 3) == ["long_words", "no_whitespace"]
+    assert quality_problems("") == ["empty"]
+
+
+def test_statistics_separate_the_populations():
+    healthy = text_statistics(HEALTHY * 3)
+    broken = text_statistics(CONTROL_SEPARATED * 3)
+
+    assert healthy["control_char_ratio"] == 0.0
+    assert broken["control_char_ratio"] > 0.0
+    assert healthy["whitespace_ratio"] > 0.10
+    assert broken["whitespace_ratio"] < 0.05
+
+
+def test_whitespace_and_control_ratios_of_empty_text_are_zero():
+    for fn in (whitespace_ratio, control_char_ratio):
+        assert fn("") == 0.0
+        assert fn(None) == 0.0
+
+
+def test_image_only_page_is_not_silently_repaired(tmp_path):
+    """A scanned page has no text to recover. OCR is deliberately not part of
+    this pipeline, so the honest outcome is the existing explicit error, not
+    an empty reconstruction presented as a repair."""
+    from src.exceptions import EmptyDocumentError
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 200, 120))
+    pix.set_rect(pix.irect, (200, 200, 200))
+    page.insert_image(pymupdf.Rect(50, 50, 250, 170), pixmap=pix)
+    pdf = tmp_path / "scanned.pdf"
+    doc.save(str(pdf))
+    doc.close()
+
+    with pytest.raises(EmptyDocumentError):
+        extract_pages(str(pdf))
+
+
+def test_pages_with_no_text_are_skipped_not_repaired(tmp_path):
+    """A blank page among real ones is dropped as before; page numbers of the
+    pages that DO carry text stay correct."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    for i in range(12):
+        page.insert_text((36, 72 + i * 18), HEALTHY[:90])
+    doc.new_page()  # deliberately blank
+    page = doc.new_page()
+    for i in range(12):
+        page.insert_text((36, 72 + i * 18), HEALTHY[:90])
+    pdf = tmp_path / "with_blank.pdf"
+    doc.save(str(pdf))
+    doc.close()
+
+    pages = extract_pages(str(pdf))
+
+    assert [p["page"] for p in pages] == [1, 3]
+    assert repaired_pages(pages) == []
+
+
+def test_ingest_reports_repaired_pages(tmp_path, monkeypatch):
+    import numpy as np
+
+    import scripts.ingest as ingest_script
+    from src import config
+
+    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "metadata.db"))
+    monkeypatch.setattr(config, "FAISS_INDEX_PATH", str(tmp_path / "faiss.index"))
+    monkeypatch.setattr(
+        ingest_script,
+        "embed_texts",
+        lambda texts: np.ones((len(texts), config.EMBEDDING_DIM), dtype="float32"),
+    )
+
+    pdf = tmp_path / "control_separated.pdf"
+    _write_pdf(pdf, CONTROL_SEPARATED)
+
+    result = ingest_script.ingest_pdf(str(pdf))
+
+    assert result["repaired_pages"] == [1]
+    assert result["degraded_pages"] == []
+    # Repaired text chunks into real words, so the chunker can split it.
+    assert result["chunk_count"] > 0
 
 
 def test_ingest_reports_degraded_pages(tmp_path, monkeypatch):
