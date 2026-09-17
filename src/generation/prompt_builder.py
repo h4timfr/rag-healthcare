@@ -125,7 +125,11 @@ ANSWER_STYLES = {
         "each starting with that document's name followed by a colon, then "
         "your own sentences about that document's own EVIDENCE.\n"
         "- One section per DOCUMENT heading - never one section per evidence "
-        "entry, and never a section called \"Document 1\" or \"Evidence [1]\"."
+        "entry, and never a section called \"Document 1\" or \"Evidence [1]\".\n"
+        "- Start each section with the filename alone, exactly as listed below. "
+        "Write \"Pediatric Report.pdf:\", never \"DOCUMENT: Pediatric Report.pdf\" - "
+        "the DOCUMENT/PAGE/EVIDENCE labels belong to the material you are reading, "
+        "not to your answer."
     ),
     intent_module.FOLLOW_UP: (
         "ANSWER STYLE\n"
@@ -576,10 +580,14 @@ def build_multi_document_context(chunks: list[dict], document_inventory: list[di
         doc_chunks = [c for c in chunks if c.get("document_id") == doc.get("document_id")]
 
         if not doc_chunks:
-            sections.append(
-                f"DOCUMENT: {doc['source']}\n"
-                "  EVIDENCE: (No relevant evidence was retrieved for this document.)"
-            )
+            # A terse marker, not a sentence. It used to read "(No relevant
+            # evidence was retrieved for this document.)" - fluent English,
+            # and the most quotable line in the whole prompt whenever the
+            # question had no answer. Asked an unsupported question, the
+            # model returned exactly that sentence as its entire answer:
+            # internal plumbing handed back to the user. There is nothing
+            # here to copy now, so it has to use its own words.
+            sections.append(f"DOCUMENT: {doc['source']}\n  EVIDENCE: none")
             continue
 
         blocks = "\n\n".join(
@@ -614,6 +622,7 @@ def build_multi_document_prompt(
     """
     context = build_multi_document_context(chunks, document_inventory)
     document_list = ", ".join(doc["source"] for doc in document_inventory)
+    resolved_intent = intent_module.classify_intent(query, history=history)
 
     rules = (
         f"\nMULTI-DOCUMENT RULES ({len(document_inventory)} documents are selected):\n"
@@ -623,17 +632,30 @@ def build_multi_document_prompt(
         "different parts of the SAME document, not different documents. There are "
         f"exactly {len(document_inventory)} documents, however many evidence "
         "entries there are.\n"
-        "- A document being selected does NOT mean you have evidence about it. If a "
-        "document's block says no relevant evidence was retrieved, say that in one "
-        "sentence - do not guess, and do not quietly leave it out.\n"
+        "- A document being selected does NOT mean you have evidence about it. Never "
+        "claim anything about a document whose block has no evidence.\n"
         "- The EVIDENCE blocks are material to read, not a format to copy. Never write "
-        "a bare \"DOCUMENT:\"/\"PAGE:\"/\"EVIDENCE:\" label, or a bare citation or page "
-        "number, into your answer.\n"
+        "a bare \"DOCUMENT:\"/\"PAGE:\"/\"EVIDENCE:\" label, a bare citation or page "
+        "number, or the phrase \"no relevant evidence was retrieved\", into your "
+        "answer. If the documents do not answer the question, say so in your own "
+        "words.\n"
         "- Keep each citation ([1], [2], ...) attached to the evidence it came from."
     )
 
+    # Accounting for every selected document - including ones that returned
+    # nothing - is the task ONLY when the question asks about each of them.
+    # Applied to every multi-document question it backfired: asked an
+    # unsupported question ("what was the patient's blood type?") the model
+    # replied with the context's own placeholder sentence, "No relevant
+    # evidence was retrieved for this document" - internal plumbing quoted
+    # back as if it were an answer.
+    if resolved_intent in intent_module.MULTI_DOCUMENT_INTENTS:
+        rules += (
+            "\n- Cover every selected document. For one with no evidence, say in your "
+            "own words that these documents do not cover it - do not guess, and do "
+            "not silently leave it out."
+        )
 
-    resolved_intent = intent_module.classify_intent(query, history=history)
     answer_style = build_answer_style(query, resolved_intent)
 
     # A filled-in skeleton, not a description of one. Telling this model to

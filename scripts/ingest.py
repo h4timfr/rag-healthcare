@@ -51,7 +51,8 @@ def ingest_pdf(pdf_path: str, db_path: str | None = None, faiss_index_path: str 
         )
         return {"document_id": document_id, "chunk_count": existing, "skipped": True}
 
-    pages = extract_pages(pdf_path)
+    extraction_report: dict = {}
+    pages = extract_pages(pdf_path, report=extraction_report)
     # Pages the word-geometry fallback repaired, and pages still malformed
     # after it (see pdf_extractor). A document with unrepairable pages is
     # still indexed - degraded text is worse than clean text but better than
@@ -59,6 +60,7 @@ def ingest_pdf(pdf_path: str, db_path: str | None = None, faiss_index_path: str 
     # its cause rather than blamed on the model.
     fixed_pages = repaired_pages(pages)
     low_quality_pages = degraded_pages(pages)
+    scanned_pages = extraction_report.get("image_only_pages", [])
     cleaned_pages = [{"page": p["page"], "text": clean_text(p["text"])} for p in pages]
     chunks = chunk_pages(cleaned_pages, config.CHUNK_SIZE_WORDS, config.CHUNK_OVERLAP_WORDS)
 
@@ -80,14 +82,30 @@ def ingest_pdf(pdf_path: str, db_path: str | None = None, faiss_index_path: str 
         chunks=[(chunk.page, chunk.text) for chunk in chunks],
     )
 
-    index.add(embeddings, np.array(chunk_ids, dtype="int64"))
-    index.save()
+    # The SQLite rows are committed at this point but the vectors are not
+    # written yet, so a failure here would leave the document half-indexed:
+    # listed in the library, searchable by keyword, invisible to dense
+    # retrieval - and permanently un-repairable, because the dedup check
+    # above sees chunk_count > 0 and SKIPS every future re-upload of the
+    # same file. Undoing the rows restores the pre-ingestion state, so the
+    # user can simply upload it again.
+    try:
+        index.add(embeddings, np.array(chunk_ids, dtype="int64"))
+        index.save()
+    except Exception:
+        store.delete_document(document_id)
+        raise
 
     print(f"Ingested '{pdf_path}': {len(chunks)} chunks (document_id={document_id})")
     if fixed_pages:
         print(
             f"  Note: page(s) {fixed_pages} had malformed word boundaries and were "
             f"re-extracted from glyph geometry."
+        )
+    if scanned_pages:
+        print(
+            f"  WARNING: page(s) {scanned_pages} contain only images and were skipped "
+            f"(no OCR in this pipeline)."
         )
     if low_quality_pages:
         print(
@@ -101,6 +119,8 @@ def ingest_pdf(pdf_path: str, db_path: str | None = None, faiss_index_path: str 
         "skipped": False,
         "degraded_pages": low_quality_pages,
         "repaired_pages": fixed_pages,
+        "image_only_pages": scanned_pages,
+        "page_count": len({p["page"] for p in pages}),
     }
 
 

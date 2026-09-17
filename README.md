@@ -16,12 +16,16 @@ citations - generated entirely on your own machine, with no cloud API calls.
   (Ollama) to generate a cited answer - the model is instructed to answer
   only from the retrieved context, not its own general knowledge.
 - **Keeps documents isolated by default**: a question is answered using only
-  the currently active document, so uploading a second document never lets
-  answers leak in evidence from a different one (opt-in "ask across all
-  documents" mode is available for when that isolation isn't wanted).
-- **Runs as a Streamlit app** with a document library (upload, select,
-  delete), chat history, and an evidence panel showing exactly which chunks
-  the answer was grounded in.
+  the document currently in scope, so uploading a second document never lets
+  evidence from a different one leak into an answer. Analysing several
+  documents together is an explicit, opt-in choice.
+- **Understands which document you mean**: "what medications are in the OMC
+  report?", "what about the third document?" and "compare the first and
+  third documents" are resolved to specific documents deterministically,
+  before retrieval runs, and the answer is scoped to exactly those.
+- **Runs as a Streamlit app** with a document library (upload, scope,
+  delete), chat history, page-level source citations, and an evidence panel
+  showing exactly which chunks the answer was grounded in.
 
 ## Architecture
 
@@ -112,19 +116,29 @@ batch. Re-uploading a file whose exact byte content is already indexed
 (matched by a SHA-256 content hash, not filename) is detected and skipped
 rather than duplicated.
 
-**Active-document isolation.** Exactly one document is "active" at a time
-(shown in the sidebar and above the chat). By default, **questions are
-answered using only the active document** - retrieval is scoped to its
-`document_id`, so evidence from other indexed documents can never leak into
-an answer. Selecting a different document in the library switches the active
-document immediately; it does not retroactively change earlier answers in
-the chat history, since each answer's sources are stored with that turn.
+**Choosing what gets analysed.** The sidebar has one document library and
+one **Analysis scope** switch that decides what each entry in it does:
 
-**Multiple documents.** All indexed documents appear in the sidebar library
-with filename, page count, and chunk count. With 2+ documents indexed, an
-opt-in "Ask across all documents" checkbox is available for questions that
-should search the whole corpus instead of one document - isolation is still
-the default every time the app starts.
+| Scope | What the library shows | What a question can see |
+|---|---|---|
+| *One document at a time* (default) | a button per document | only that document |
+| *Several documents together* | a tick box per document | only the ticked documents |
+
+Whichever is chosen, the documents in scope are listed above the chat before
+you ask anything, and marked "in scope" in the library - the app never
+leaves you guessing which documents an answer could have come from.
+Retrieval is scoped by `document_id`, so evidence from a document that is
+not in scope cannot reach an answer. Changing the scope does not rewrite
+earlier answers: each turn stores the sources it actually used.
+
+**Referring to documents by name or position.** In multi-document scope you
+can name a document instead of ticking it - "what medications are in the OMC
+report?", "summarise the second document", "compare the first and third
+documents". References are resolved deterministically against the documents
+currently in scope (filename, distinctive filename words, ordinal position,
+or an unambiguous antecedent from the previous turn). A reference that fits
+more than one document resolves to none of them and the scope is left alone,
+rather than the app quietly guessing.
 
 **Document deletion.** Removing a document is a real, permanent delete, not
 a soft/fake one: its rows and FTS entries are removed from SQLite and its
@@ -217,6 +231,44 @@ rules only - no second model call, and no extra latency.
 
 The legacy `scripts/evaluate.py` benchmark path is unchanged and still uses
 the original prompt and instruction set.
+
+## Limitations
+
+This is a **prototype**, not a medical device and not a diagnostic system.
+It retrieves passages from documents you supply and asks a small local model
+to summarise them. It makes no claim of clinical accuracy, and every answer
+should be checked against the cited pages.
+
+Known limitations, measured rather than assumed:
+
+- **The answer is only as good as the retrieved evidence.** If the relevant
+  passage is not retrieved, the model cannot recover it. Source attribution
+  shows which passages were used; it is not evidence that the answer is
+  correct.
+- **Small-model arithmetic and counting are unreliable.** Asked how many
+  studies a literature survey cites, both `llama3.2:3b` and a 7B model
+  answered incorrectly (3 and 4, against a true 5). Counting across
+  passages is a known weak point.
+- **No OCR.** Scanned or image-only pages carry no text layer. They are
+  detected and reported at upload, and are simply absent from the index.
+- **Broken PDF text layers can only partly be repaired.** A font whose
+  encoding loses word boundaries is repaired from glyph geometry where the
+  layout allows it; where glyphs genuinely abut, the page is flagged as
+  unusable rather than silently indexed as garbage. Hyphens are not
+  recovered by the repair.
+- **Document references are lexical.** A reference resolves by filename,
+  filename words, ordinal position, or an unambiguous recent antecedent. A
+  paraphrase with none of those ("the cardiology one") will not resolve, and
+  falls back to the current scope rather than guessing.
+- **Conversation history informs generation, never retrieval.** A follow-up
+  is retrieved on its own words, so a question that depends entirely on an
+  earlier turn for its search terms may retrieve poorly.
+- **Answers vary between runs.** Generation is sampled at a low but non-zero
+  temperature, so the same question can produce different phrasing and
+  occasionally a different (still grounded) choice of supporting detail.
+- **Single-machine, single-user.** There is no authentication, no
+  multi-user isolation, and no audit log. Do not expose it on a network you
+  do not control.
 
 ## Where local data lives
 

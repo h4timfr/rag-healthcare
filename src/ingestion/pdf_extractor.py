@@ -196,13 +196,20 @@ def _extract_page_text(page) -> tuple[str, str, list[str]]:
     return text, "text", problems
 
 
-def extract_pages(pdf_path: str) -> list[dict]:
+def extract_pages(pdf_path: str, report: dict | None = None) -> list[dict]:
     """Extract text from a PDF, one entry per non-empty page.
 
     Returns a list of {"page": <1-indexed page number>, "text": <page text>,
     "extraction": "text"|"words"}. The first two keys are what the rest of
     the pipeline consumes and are unchanged; "extraction" records which path
     produced the text, for the ingestion report.
+
+    If `report` is given it is populated in place (same opt-in out-parameter
+    pattern as retrieve_hybrid's `timing`) with "image_only_pages": pages
+    that yielded no text but do contain an image. Those are scanned pages,
+    and this pipeline has no OCR, so they are silently absent from the index
+    unless someone says so - a user who uploads a 10-page scan and gets
+    answers from the 2 typed pages should be told why.
 
     Raises InvalidPDFError, EmptyDocumentError, or PDFExtractionError on
     failure.
@@ -226,6 +233,7 @@ def extract_pages(pdf_path: str) -> list[dict]:
             raise EmptyDocumentError(f"PDF '{pdf_path}' has no pages")
 
         pages = []
+        image_only = []
         try:
             for page_number in range(doc.page_count):
                 page = doc[page_number]
@@ -234,12 +242,17 @@ def extract_pages(pdf_path: str) -> list[dict]:
                     pages.append(
                         {"page": page_number + 1, "text": text, "extraction": mode}
                     )
+                elif page.get_images(full=True):
+                    image_only.append(page_number + 1)
         except InvalidPDFError:
             raise
         except Exception as e:
             raise PDFExtractionError(f"Failed extracting text from '{pdf_path}': {e}") from e
     finally:
         doc.close()
+
+    if report is not None:
+        report["image_only_pages"] = image_only
 
     if not pages:
         raise EmptyDocumentError(

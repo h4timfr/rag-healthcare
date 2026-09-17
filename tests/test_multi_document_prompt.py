@@ -69,7 +69,7 @@ def test_all_three_documents_named_in_context_when_all_have_evidence():
     assert "pediatric evidence text" in prompt
     assert "cardio evidence text" in prompt
     assert "rag pipeline evidence text" in prompt
-    assert "No relevant evidence was retrieved" not in prompt
+    assert "EVIDENCE: none" not in prompt
 
 
 # --- only 2 of 3 selected documents have evidence ---------------------------
@@ -86,16 +86,16 @@ def test_document_without_evidence_is_explicitly_flagged_not_invented():
     prompt = build_prompt("summarize each document", chunks, document_inventory=INVENTORY_3)
 
     blocks = _blocks_by_document(context)
-    assert "No relevant evidence was retrieved for this document" in blocks["RAG_Healthcare_Review1.pdf"]
+    assert "EVIDENCE: none" in blocks["RAG_Healthcare_Review1.pdf"]
 
     # The other two documents' blocks must NOT carry that placeholder.
-    assert "No relevant evidence was retrieved" not in blocks["Pediatric Report.pdf"]
-    assert "No relevant evidence was retrieved" not in blocks["OMC Report Sample - Cardio.pdf"]
+    assert "EVIDENCE: none" not in blocks["Pediatric Report.pdf"]
+    assert "EVIDENCE: none" not in blocks["OMC Report Sample - Cardio.pdf"]
 
     # All three document names still appear (so the model knows what was
     # selected), and the rules instruct it not to invent content for d3.
     assert "RAG_Healthcare_Review1.pdf" in prompt
-    assert "No relevant evidence was retrieved for this document" in prompt
+    assert "EVIDENCE: none" in prompt
     assert "does NOT mean you have evidence" in prompt
 
 
@@ -111,7 +111,7 @@ def test_document_without_evidence_never_gets_fabricated_chunk_text():
     assert "pediatric evidence text" in blocks["Pediatric Report.pdf"]
     for empty_source in ("OMC Report Sample - Cardio.pdf", "RAG_Healthcare_Review1.pdf"):
         block = blocks[empty_source]
-        assert "EVIDENCE: (No relevant evidence was retrieved for this document.)" in block
+        assert "EVIDENCE: none" in block
         # No page line and no borrowed text: the block carries the
         # placeholder and nothing else.
         assert "PAGE:" not in block

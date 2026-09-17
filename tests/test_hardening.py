@@ -67,7 +67,7 @@ def test_multi_document_context_with_no_chunks_flags_every_document():
 
     context = build_multi_document_context([], inventory)
 
-    assert context.count("No relevant evidence was retrieved") == 2
+    assert context.count("EVIDENCE: none") == 2
 
 
 def test_multi_document_context_with_empty_inventory_is_empty():

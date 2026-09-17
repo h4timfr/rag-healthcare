@@ -67,7 +67,13 @@ def ingest_uploaded_pdf(filename: str, file_bytes: bytes) -> dict:
     try:
         tmp_path = Path(tmp_dir) / safe_name
         tmp_path.write_bytes(file_bytes)
-        return ingest_module.ingest_pdf(str(tmp_path))
+        try:
+            return ingest_module.ingest_pdf(str(tmp_path))
+        except RagError as e:
+            # Ingestion errors name the file by its temporary path, which is
+            # an internal detail the user never chose and cannot act on.
+            # Re-raise the same error type with the name they uploaded.
+            raise type(e)(str(e).replace(str(tmp_path), safe_name)) from e
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -104,6 +110,8 @@ def ingest_uploaded_pdfs(files: list[tuple[str, bytes]]) -> list[dict]:
                     "chunk_count": None,
                     "degraded_pages": [],
                     "repaired_pages": [],
+                    "image_only_pages": [],
+                    "page_count": None,
                     "error": str(e),
                 }
             )
@@ -116,6 +124,8 @@ def ingest_uploaded_pdfs(files: list[tuple[str, bytes]]) -> list[dict]:
                     "chunk_count": result["chunk_count"],
                     "degraded_pages": result.get("degraded_pages", []),
                     "repaired_pages": result.get("repaired_pages", []),
+                    "image_only_pages": result.get("image_only_pages", []),
+                    "page_count": result.get("page_count"),
                     "error": None,
                 }
             )
@@ -491,9 +501,55 @@ BASE_CSS = """
     margin-bottom: 0.3rem;
     background: var(--card-bg);
 }
-.doc-card.active { border-color: var(--accent); background: var(--accent-soft); }
-.doc-name { font-weight: 600; font-size: 0.92rem; overflow-wrap: anywhere; }
-.doc-meta { color: var(--text-secondary); font-size: 0.78rem; margin-top: 0.1rem; }
+.doc-card.in-scope { border-color: var(--accent); background: var(--accent-soft); }
+/* Long filenames truncate to one line with the full name on hover, so a
+   30-character report name cannot push the sidebar controls out of shape. */
+.doc-name {
+    font-weight: 600; font-size: 0.92rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.doc-meta {
+    color: var(--text-secondary); font-size: 0.78rem; margin-top: 0.15rem;
+    display: flex; align-items: center; gap: 0.4rem;
+}
+.doc-badge {
+    color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 999px; padding: 0 0.4rem;
+    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em;
+}
+
+/* Scope banner - what this turn can actually see. */
+.scope-banner {
+    border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; background: var(--bg-secondary);
+    padding: 0.6rem 0.8rem; margin-bottom: 1rem;
+}
+.scope-headline {
+    font-size: 0.78rem; font-weight: 600; letter-spacing: 0.03em;
+    text-transform: uppercase; color: var(--text-secondary);
+}
+.scope-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
+.scope-chip {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.1rem 0.45rem;
+    font-size: 0.82rem; color: var(--text);
+    max-width: 100%; overflow-wrap: anywhere;
+}
+
+.empty-state {
+    border: 1px dashed var(--border); border-radius: 12px;
+    padding: 1.6rem 1.8rem; background: var(--bg-secondary);
+    max-width: 640px;
+}
+.empty-state h3 { margin: 0 0 0.6rem 0; font-size: 1.05rem; color: var(--text); }
+.empty-state p {
+    margin: 0 0 0.6rem 0; color: var(--text-secondary);
+    font-size: 0.9rem; line-height: 1.55;
+}
+.empty-state p:last-child { margin-bottom: 0; }
+
+/* Keep the sidebar narrow enough to leave the chat usable on a laptop. */
+[data-testid="stSidebar"] { min-width: 300px; max-width: 340px; }
 
 .status-badge { font-size: 0.8rem; padding: 0.15rem 0; }
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.4rem; }
@@ -571,11 +627,22 @@ def render_upload_area() -> None:
             processed_keys.add(_upload_key(uploaded_file))
 
             if result["status"] == "indexed":
-                progress.caption(f"complete - {result['chunk_count']} chunks indexed.")
+                pages = result.get("page_count")
+                detail = f"Indexed - {result['chunk_count']} chunks"
+                if pages:
+                    detail += f" from {pages} pages"
+                progress.caption(detail)
                 if result.get("repaired_pages"):
                     st.caption(
                         f"Page(s) {result['repaired_pages']} had malformed word "
                         "boundaries and were re-extracted from glyph geometry."
+                    )
+                if result.get("image_only_pages"):
+                    st.warning(
+                        f"Page(s) {result['image_only_pages']} of **{uploaded_file.name}** "
+                        "contain only images, so their text could not be read and they "
+                        "are not searchable. This app does not run OCR; a text-based PDF "
+                        "will give much better answers."
                     )
                 if result.get("degraded_pages"):
                     st.warning(
@@ -586,9 +653,12 @@ def render_upload_area() -> None:
                         "of your question."
                     )
             elif result["status"] == "skipped":
-                progress.caption(f"skipped - already indexed ({result['chunk_count']} chunks).")
+                progress.caption(
+                    f"Already in your library - {result['chunk_count']} chunks (not re-indexed)."
+                )
             else:
-                progress.caption(f"failed - {result['error']}")
+                progress.caption("Could not be indexed.")
+                st.error(f"**{uploaded_file.name}** - {result['error']}")
 
         indexed = sum(1 for r in batch_results if r["status"] == "indexed")
         skipped = sum(1 for r in batch_results if r["status"] == "skipped")
@@ -614,43 +684,67 @@ def render_upload_area() -> None:
 
 
 def render_document_library(documents: list[dict], active_id: str | None) -> None:
+    """One document list, showing each document's state for the CURRENT
+    analysis scope.
+
+    There used to be two lists: cards with a "Select" button that set the
+    ACTIVE document, and - further down, under "Analysis scope" - a second
+    list of checkboxes labelled "Selected documents". The same word meant
+    two different things in one sidebar, the same documents were drawn
+    twice, and a document's card gave no hint whether it was part of a
+    multi-document selection. The scope now decides what the one list does:
+    a radio in Active mode, checkboxes in Selected mode.
+    """
     if not documents:
-        st.caption("No documents indexed yet. Upload a PDF above to begin.")
+        st.caption("No documents yet - upload a PDF above to begin.")
         return
 
+    scope = st.session_state.get("analysis_scope", "active")
+    selected = st.session_state.setdefault("selected_document_ids", set())
     pending_delete = st.session_state.get("pending_delete_id")
 
     for doc in documents:
         doc_id = doc["document_id"]
-        is_active = doc_id == active_id
-        pages = doc.get("page_count")
+        in_scope = doc_id == active_id if scope == "active" else doc_id in selected
+
         meta_bits = [f"{doc['chunk_count']} chunks"]
-        if pages:
-            meta_bits.append(f"{pages} pages")
+        if doc.get("page_count"):
+            meta_bits.append(f"{doc['page_count']} pages")
 
         st.markdown(
-            f'<div class="doc-card{" active" if is_active else ""}">'
-            f'<div class="doc-name">{"● " if is_active else ""}{escape(doc["source"])}</div>'
-            f'<div class="doc-meta">{" · ".join(meta_bits)}</div>'
+            f'<div class="doc-card{" in-scope" if in_scope else ""}">'
+            f'<div class="doc-name" title="{escape(doc["source"])}">{escape(doc["source"])}</div>'
+            f'<div class="doc-meta">{" · ".join(meta_bits)}'
+            f'{"<span class=\'doc-badge\'>in scope</span>" if in_scope else ""}</div>'
             f"</div>",
             unsafe_allow_html=True,
         )
 
-        col_select, col_remove = st.columns(2)
-        with col_select:
-            st.button(
-                "Active" if is_active else "Select",
-                key=f"select_{doc_id}",
-                use_container_width=True,
-                disabled=is_active,
-                on_click=_set_active_document,
-                args=(doc_id,),
-            )
+        col_scope, col_remove = st.columns([3, 1])
+        with col_scope:
+            if scope == "active":
+                st.button(
+                    "In scope" if in_scope else "Use this document",
+                    key=f"select_{doc_id}",
+                    use_container_width=True,
+                    disabled=in_scope,
+                    on_click=_set_active_document,
+                    args=(doc_id,),
+                )
+            else:
+                st.checkbox(
+                    "Include in analysis",
+                    value=in_scope,
+                    key=f"scope_select_{doc_id}",
+                    on_change=_toggle_selected_document,
+                    args=(doc_id,),
+                )
         with col_remove:
             st.button(
                 "Remove",
                 key=f"remove_{doc_id}",
                 use_container_width=True,
+                help=f"Delete {doc['source']} from the library",
                 on_click=_request_delete,
                 args=(doc_id,),
             )
@@ -679,6 +773,15 @@ def render_document_library(documents: list[dict], active_id: str | None) -> Non
 def _set_active_document(doc_id: str) -> None:
     st.session_state["active_document_id"] = doc_id
     st.session_state.pop("pending_delete_id", None)
+
+
+def _toggle_selected_document(doc_id: str) -> None:
+    """Mirror one document's checkbox into the selected-document set."""
+    selected = st.session_state.setdefault("selected_document_ids", set())
+    if st.session_state.get(f"scope_select_{doc_id}"):
+        selected.add(doc_id)
+    else:
+        selected.discard(doc_id)
 
 
 def _request_delete(doc_id: str) -> None:
@@ -726,48 +829,37 @@ def render_analysis_scope(documents: list[dict]) -> None:
     if not documents:
         return
 
-    st.divider()
-    st.subheader("Analysis scope")
     st.radio(
         "Analysis scope",
         options=["active", "selected"],
-        format_func=lambda v: "Active document" if v == "active" else "Selected documents",
+        format_func=lambda v: (
+            "One document at a time" if v == "active" else "Several documents together"
+        ),
         key="analysis_scope",
-        label_visibility="collapsed",
+        help=(
+            "One document: questions are answered from a single document, fully "
+            "isolated from the rest of the library. Several documents: compare "
+            "or summarise across the documents you tick below."
+        ),
     )
-
-    if st.session_state["analysis_scope"] != "selected":
-        return
-
-    selected = st.session_state.setdefault("selected_document_ids", set())
-    for doc in documents:
-        doc_id = doc["document_id"]
-        checked = st.checkbox(doc["source"], value=doc_id in selected, key=f"scope_select_{doc_id}")
-        if checked:
-            selected.add(doc_id)
-        else:
-            selected.discard(doc_id)
-
-    if selected:
-        st.caption(f"**{len(selected)} document(s) selected**")
-    else:
-        st.warning("Select at least one document to ask a question.")
 
 
 def render_sidebar(documents: list[dict], active_id: str | None) -> None:
     render_theme_toggle()
     render_status()
-    st.caption(f"{len(documents)} document(s) indexed")
 
     st.divider()
-    st.subheader("Upload")
+    st.subheader("Add documents")
     render_upload_area()
 
     st.divider()
-    st.subheader("Documents")
-    render_document_library(documents, active_id)
-
+    # Scope comes before the library because it decides what the library's
+    # per-document control means (pick one, or tick several).
     render_analysis_scope(documents)
+
+    header = "Library" if not documents else f"Library ({len(documents)})"
+    st.subheader(header)
+    render_document_library(documents, active_id)
 
     st.divider()
     if st.button("Clear chat", use_container_width=True):
@@ -872,11 +964,56 @@ def _stream_with_ttft(prompt: str, gen_result: dict, timing: dict, num_predict: 
         yield token
 
 
-def render_empty_state() -> None:
-    st.info(
-        "**No document selected yet.**\n\n"
-        "Upload a healthcare PDF from the sidebar to build a searchable "
-        "library, then select it to start asking questions."
+def render_empty_state(has_documents: bool) -> None:
+    """Two genuinely different situations, which used to share one message
+    that said "No document selected yet" even when the library was empty."""
+    if not has_documents:
+        st.markdown(
+            '<div class="empty-state">'
+            "<h3>Start by adding a document</h3>"
+            "<p>Upload a healthcare PDF using <strong>Add documents</strong> in the "
+            "sidebar. It is parsed, chunked and indexed locally on this machine - "
+            "nothing is uploaded anywhere.</p>"
+            "<p>Once it is indexed you can ask questions about it, and every answer "
+            "will cite the pages it came from.</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.markdown(
+        '<div class="empty-state">'
+        "<h3>Choose what to analyse</h3>"
+        "<p>Your library has documents, but none are in scope yet. Pick one under "
+        "<strong>Library</strong> in the sidebar, or switch to "
+        "<em>Several documents together</em> and tick the ones you want to "
+        "compare.</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_no_evidence(scope_label: str) -> None:
+    """Shown when retrieval finds nothing. Deliberately not an error: the
+    system has no evidence either way, which is not the same as the fact
+    being false, and saying so is the honest thing for a clinical tool."""
+    st.warning(
+        f"**No relevant evidence found in {scope_label}.**\n\n"
+        "This does not mean the answer is no - only that nothing in the "
+        "documents currently in scope matched the question. Try rephrasing it, "
+        "or widen the scope in the sidebar."
+    )
+
+
+def render_scope_banner(headline: str, names: list[str]) -> None:
+    """A compact, always-visible statement of exactly which documents this
+    turn can draw on - the single most important thing to be unambiguous
+    about in a tool whose whole promise is document isolation."""
+    chips = "".join(f'<span class="scope-chip">{escape(n)}</span>' for n in names)
+    st.markdown(
+        f'<div class="scope-banner"><div class="scope-headline">{escape(headline)}</div>'
+        f'<div class="scope-chips">{chips}</div></div>',
+        unsafe_allow_html=True,
     )
 
 
@@ -902,21 +1039,25 @@ def render_chat(
 
     if analysis_scope == "selected":
         scope_ready = bool(scope_document_id)
+        names = [d["source"] for d in documents if d["document_id"] in selected_document_ids]
+        scope_label = f"{len(names)} documents" if len(names) != 1 else names[0]
         if scope_ready:
-            names = ", ".join(d["source"] for d in documents if d["document_id"] in selected_document_ids)
-            st.info(f"Chatting with **{len(scope_document_id)} selected documents**: {names}")
+            noun = "document" if len(names) == 1 else "documents"
+            render_scope_banner(f"Analysing {len(names)} {noun}", names)
         placeholder = (
-            f"Ask a question about the {len(scope_document_id)} selected documents..."
-            if scope_ready
-            else "Select at least one document to begin..."
-        )
+            f"Ask about {names[0]}..."
+            if len(names) == 1
+            else f"Ask about these {len(names)} documents..."
+        ) if scope_ready else "Tick at least one document in the sidebar..."
     else:
         scope_ready = scope_document_id is not None
-        if scope_ready:
-            active_doc = next((d for d in documents if d["document_id"] == scope_document_id), None)
-            if active_doc:
-                st.info(f"Chatting with: **{active_doc['source']}**")
-        placeholder = "Ask a question about the active document..."
+        active_doc = next((d for d in documents if d["document_id"] == scope_document_id), None)
+        scope_label = active_doc["source"] if active_doc else "the selected document"
+        if scope_ready and active_doc:
+            render_scope_banner("Analysing one document", [active_doc["source"]])
+        placeholder = (
+            f"Ask about {active_doc['source']}..." if active_doc else "Ask a question..."
+        )
 
     for turn in st.session_state["chat_history"]:
         with st.chat_message(turn["role"]):
@@ -929,10 +1070,7 @@ def render_chat(
                 render_timing(turn["timing"])
 
     if not scope_ready:
-        if analysis_scope == "selected" and documents:
-            st.info("Select at least one document in the sidebar to start asking questions.")
-        else:
-            render_empty_state()
+        render_empty_state(has_documents=bool(documents))
         return
 
     query = st.chat_input(placeholder)
@@ -957,7 +1095,7 @@ def render_chat(
         timing: dict = {}
         turn_start = time.perf_counter()
 
-        with st.spinner("Retrieving evidence..."):
+        with st.spinner("Searching your documents..."):
             try:
                 chunks, prompt = retrieve_and_build_prompt(
                     query,
@@ -967,6 +1105,17 @@ def render_chat(
                     document_inventory=document_inventory,
                     history=prior_history,
                 )
+            except InsufficientRetrievalError:
+                # Not an error state: nothing matched, which is a real and
+                # honest answer for a clinical tool, not a failure.
+                render_no_evidence(scope_label)
+                st.session_state["chat_history"].append(
+                    {
+                        "role": "assistant",
+                        "content": f"No relevant evidence was found in {scope_label} for that question.",
+                    }
+                )
+                return
             except Exception as e:
                 message = friendly_error_message(e)
                 st.error(message)
