@@ -164,3 +164,61 @@ def test_stream_with_ttft_propagates_errors(monkeypatch):
 
     with pytest.raises(OllamaUnavailableError):
         list(app._stream_with_ttft("a prompt", {}, {}))
+
+
+def test_stream_with_ttft_calls_on_first_token_exactly_once_before_yielding(monkeypatch):
+    """render_chat() uses on_first_token to clear its "Generating answer..."
+    status the instant real output starts. It must fire once, on the first
+    token only - not per token - and before that token reaches the caller,
+    so the status is gone by the time anything is on screen to replace it.
+    """
+    def fake_generate_stream(prompt, result=None, num_predict=None):
+        yield "hello"
+        yield " world"
+        yield "!"
+
+    monkeypatch.setattr(app, "generate_stream", fake_generate_stream)
+
+    calls = []
+    seen_before_callback = []
+
+    def on_first_token():
+        calls.append(1)
+        seen_before_callback.append(list(collected))
+
+    collected = []
+    for token in app._stream_with_ttft("a prompt", {}, {}, on_first_token=on_first_token):
+        collected.append(token)
+
+    assert len(calls) == 1
+    # Nothing had been collected yet at the moment the callback ran.
+    assert seen_before_callback == [[]]
+
+
+def test_stream_with_ttft_without_on_first_token_still_works(monkeypatch):
+    """on_first_token is optional - omitting it (existing callers, existing
+    tests) must not error."""
+    def fake_generate_stream(prompt, result=None, num_predict=None):
+        yield "hi"
+
+    monkeypatch.setattr(app, "generate_stream", fake_generate_stream)
+
+    tokens = list(app._stream_with_ttft("a prompt", {}, {}))
+
+    assert tokens == ["hi"]
+
+
+def test_stream_with_ttft_does_not_call_on_first_token_if_stream_fails_immediately(monkeypatch):
+    from src.exceptions import OllamaUnavailableError
+
+    def failing_stream(prompt, result=None, num_predict=None):
+        raise OllamaUnavailableError("boom")
+        yield  # pragma: no cover - unreachable, makes this a generator
+
+    monkeypatch.setattr(app, "generate_stream", failing_stream)
+
+    calls = []
+    with pytest.raises(OllamaUnavailableError):
+        list(app._stream_with_ttft("a prompt", {}, {}, on_first_token=lambda: calls.append(1)))
+
+    assert calls == []

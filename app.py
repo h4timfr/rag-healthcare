@@ -950,10 +950,22 @@ def render_evidence(chunks: list[dict]) -> None:
             _render_evidence_chunks([c for c in chunks if c["source"] == source])
 
 
-def _stream_with_ttft(prompt: str, gen_result: dict, timing: dict, num_predict: int | None = None):
+def _stream_with_ttft(
+    prompt: str,
+    gen_result: dict,
+    timing: dict,
+    num_predict: int | None = None,
+    on_first_token=None,
+):
     """Wrap generate_stream() to also record time-to-first-token into
     `timing` (UI-only instrumentation; generate_stream itself stays
     display-agnostic and reusable from non-Streamlit callers).
+
+    `on_first_token` (optional), if given, is called once, the moment the
+    first token arrives - before it is yielded. render_chat() uses this to
+    clear its "Generating answer..." status the instant real output starts,
+    instead of leaving it on screen next to the streamed text or guessing at
+    when to remove it.
     """
     start = time.perf_counter()
     first_token = True
@@ -961,6 +973,8 @@ def _stream_with_ttft(prompt: str, gen_result: dict, timing: dict, num_predict: 
         if first_token:
             timing["time_to_first_token_ms"] = (time.perf_counter() - start) * 1000
             first_token = False
+            if on_first_token is not None:
+                on_first_token()
         yield token
 
 
@@ -1062,12 +1076,19 @@ def render_chat(
     for turn in st.session_state["chat_history"]:
         with st.chat_message(turn["role"]):
             st.write(turn["content"])
+            turn_timing = turn.get("timing") or {}
+            if turn["role"] == "assistant" and turn_timing.get("total_ms") is not None:
+                # Mirrors the live "Complete · X.Xs" caption shown right after
+                # this turn finished generating, so it stays visible after a
+                # later turn causes a rerun - not just for the instant it
+                # first appeared.
+                st.caption(f"Complete · {turn_timing['total_ms'] / 1000:.1f}s")
             if turn["role"] == "assistant" and turn.get("sources"):
                 render_sources(turn["sources"])
             if turn["role"] == "assistant" and turn.get("chunks"):
                 render_evidence(turn["chunks"])
-            if turn["role"] == "assistant" and turn.get("timing"):
-                render_timing(turn["timing"])
+            if turn["role"] == "assistant" and turn_timing:
+                render_timing(turn_timing)
 
     if not scope_ready:
         render_empty_state(has_documents=bool(documents))
@@ -1095,39 +1116,56 @@ def render_chat(
         timing: dict = {}
         turn_start = time.perf_counter()
 
-        with st.spinner("Searching your documents..."):
-            try:
-                chunks, prompt = retrieve_and_build_prompt(
-                    query,
-                    top_k=top_k,
-                    document_id=scope_document_id,
-                    timing=timing,
-                    document_inventory=document_inventory,
-                    history=prior_history,
-                )
-            except InsufficientRetrievalError:
-                # Not an error state: nothing matched, which is a real and
-                # honest answer for a clinical tool, not a failure.
-                render_no_evidence(scope_label)
-                st.session_state["chat_history"].append(
-                    {
-                        "role": "assistant",
-                        "content": f"No relevant evidence was found in {scope_label} for that question.",
-                    }
-                )
-                return
-            except Exception as e:
-                message = friendly_error_message(e)
-                st.error(message)
-                st.session_state["chat_history"].append(
-                    {"role": "assistant", "content": f"Error: {message}"}
-                )
-                return
+        # A single status line, truthful about which stage is actually
+        # running. Retrieval (FAISS + FTS5) is ~40-50ms - the real wait on
+        # this hardware is Ollama generation, which used to run silently
+        # under a spinner still reading "Searching your documents...". The
+        # message is updated in place, then cleared the instant the first
+        # real token streams in (see on_first_token below), so nothing
+        # lingers above the answer once there is something to look at.
+        stage = st.empty()
+        stage.markdown("🔎 *Retrieving relevant evidence...*")
+        try:
+            chunks, prompt = retrieve_and_build_prompt(
+                query,
+                top_k=top_k,
+                document_id=scope_document_id,
+                timing=timing,
+                document_inventory=document_inventory,
+                history=prior_history,
+            )
+        except InsufficientRetrievalError:
+            # Not an error state: nothing matched, which is a real and
+            # honest answer for a clinical tool, not a failure.
+            stage.empty()
+            render_no_evidence(scope_label)
+            st.session_state["chat_history"].append(
+                {
+                    "role": "assistant",
+                    "content": f"No relevant evidence was found in {scope_label} for that question.",
+                }
+            )
+            return
+        except Exception as e:
+            stage.empty()
+            message = friendly_error_message(e)
+            st.error(message)
+            st.session_state["chat_history"].append(
+                {"role": "assistant", "content": f"Error: {message}"}
+            )
+            return
+
+        stage.markdown("🧠 *Generating answer...*")
 
         gen_result: dict = {}
         try:
-            answer = st.write_stream(_stream_with_ttft(prompt, gen_result, timing, num_predict=num_predict))
+            answer = st.write_stream(
+                _stream_with_ttft(
+                    prompt, gen_result, timing, num_predict=num_predict, on_first_token=stage.empty
+                )
+            )
         except Exception as e:
+            stage.empty()
             message = friendly_error_message(e)
             st.error(message)
             st.session_state["chat_history"].append(
@@ -1142,6 +1180,8 @@ def render_chat(
         answer = gen_result.get("answer", answer)
         timing["generation"] = gen_result.get("timing", {})
         timing["total_ms"] = (time.perf_counter() - turn_start) * 1000
+
+        st.caption(f"Complete · {timing['total_ms'] / 1000:.1f}s")
 
         sources = [{"source": c["source"], "page": c["page"], "score": c["score"]} for c in chunks]
         render_sources(sources)
