@@ -41,6 +41,17 @@ INVENTORY_3 = [
 ]
 
 
+def _blocks_by_document(context: str) -> dict[str, str]:
+    """Collect the evidence context's "DOCUMENT: <name>" blocks, joined per
+    document. Each retrieved chunk is its own self-contained block carrying
+    its own document name, so one document can own several blocks."""
+    blocks: dict[str, str] = {}
+    for raw in context.split("DOCUMENT: ")[1:]:
+        source = raw.split("\n", 1)[0].strip()
+        blocks[source] = blocks.get(source, "") + raw
+    return blocks
+
+
 # --- all 3 selected documents have evidence ---------------------------------
 
 
@@ -74,15 +85,12 @@ def test_document_without_evidence_is_explicitly_flagged_not_invented():
     context = build_multi_document_context(chunks, INVENTORY_3)
     prompt = build_prompt("summarize each document", chunks, document_inventory=INVENTORY_3)
 
-    sections = context.split("Document:")
-    d3_section = next(s for s in sections if "RAG_Healthcare_Review1.pdf" in s)
-    assert "No relevant evidence was retrieved for this document" in d3_section
+    blocks = _blocks_by_document(context)
+    assert "No relevant evidence was retrieved for this document" in blocks["RAG_Healthcare_Review1.pdf"]
 
-    # The other two documents' sections must NOT carry that placeholder.
-    d1_section = next(s for s in sections if "Pediatric Report.pdf" in s)
-    d2_section = next(s for s in sections if "Cardio.pdf" in s)
-    assert "No relevant evidence was retrieved" not in d1_section
-    assert "No relevant evidence was retrieved" not in d2_section
+    # The other two documents' blocks must NOT carry that placeholder.
+    assert "No relevant evidence was retrieved" not in blocks["Pediatric Report.pdf"]
+    assert "No relevant evidence was retrieved" not in blocks["OMC Report Sample - Cardio.pdf"]
 
     # All three document names still appear (so the model knows what was
     # selected), and the rules instruct it not to invent content for d3.
@@ -98,19 +106,16 @@ def test_document_without_evidence_never_gets_fabricated_chunk_text():
     chunks = [_chunk("d1", "Pediatric Report.pdf", 1, "pediatric evidence text", 1)]
 
     context = build_multi_document_context(chunks, INVENTORY_3)
-    sections = {
-        doc["source"]: part
-        for doc, part in zip(
-            INVENTORY_3, context.split("Document: ")[1:]
-        )
-    }
-    assert "pediatric evidence text" in sections["Pediatric Report.pdf"]
-    assert sections["OMC Report Sample - Cardio.pdf"].strip().startswith(
-        "OMC Report Sample - Cardio.pdf\n\n(No relevant evidence"
-    )
-    assert sections["RAG_Healthcare_Review1.pdf"].strip().startswith(
-        "RAG_Healthcare_Review1.pdf\n\n(No relevant evidence"
-    )
+    blocks = _blocks_by_document(context)
+
+    assert "pediatric evidence text" in blocks["Pediatric Report.pdf"]
+    for empty_source in ("OMC Report Sample - Cardio.pdf", "RAG_Healthcare_Review1.pdf"):
+        block = blocks[empty_source]
+        assert "EVIDENCE: (No relevant evidence was retrieved for this document.)" in block
+        # No page line and no borrowed text: the block carries the
+        # placeholder and nothing else.
+        assert "PAGE:" not in block
+        assert "pediatric evidence text" not in block
 
 
 # --- "each document" / comparison intent detection --------------------------
@@ -142,16 +147,31 @@ def test_multi_document_intent_not_detected_for_narrow_questions(query):
     assert detect_multi_document_intent(query) is False
 
 
-def test_each_document_query_adds_structure_instruction():
+def test_each_document_query_adds_per_document_structure_instruction():
     chunks = [_chunk("d1", "Pediatric Report.pdf", 1, "text", 1)]
     prompt = build_prompt("Summarize each selected document separately.", chunks, document_inventory=INVENTORY_3)
-    assert "one paragraph per selected document" in prompt
+
+    assert "one short section per selected document" in prompt
+    # And it is handed a filled-in skeleton, not a description of one: the
+    # literal section headings with a slot after each. Only d1 has evidence
+    # here, so only its slot invites a summary - the other two are told to
+    # say that nothing was retrieved, which is true for them.
+    assert "Write exactly 3 sections" in prompt
+    for doc in INVENTORY_3:
+        assert f"{doc['source']}: <" in prompt
+    assert "Pediatric Report.pdf: <1-3 sentences" in prompt
+    assert "OMC Report Sample - Cardio.pdf: <one sentence saying no relevant evidence" in prompt
 
 
-def test_comparison_query_adds_structure_instruction():
+def test_comparison_query_gets_comparison_structure_not_per_document_sections():
+    """A comparison is not a stack of per-document summaries. Both shapes
+    previously shared one "paragraph per document" template, which is the
+    wrong instruction for "what do these have in common"."""
     chunks = [_chunk("d1", "Pediatric Report.pdf", 1, "text", 1)]
     prompt = build_prompt("Compare the selected documents.", chunks, document_inventory=INVENTORY_3)
-    assert "one paragraph per selected document" in prompt
+
+    assert "similarities first, then concrete differences" in prompt
+    assert "one short section per selected document" not in prompt
 
 
 def test_narrow_question_in_multi_document_scope_skips_structure_instruction():
@@ -161,7 +181,8 @@ def test_narrow_question_in_multi_document_scope_skips_structure_instruction():
     chunks = [_chunk("d1", "Pediatric Report.pdf", 1, "text", 1)]
     prompt = build_prompt("What medication was prescribed?", chunks, document_inventory=INVENTORY_3)
     assert "MULTI-DOCUMENT RULES" in prompt
-    assert "one paragraph per selected document" not in prompt
+    assert "one short section per selected document" not in prompt
+    assert "similarities first" not in prompt
 
 
 # --- single-document mode is unaffected --------------------------------------
@@ -315,4 +336,4 @@ def test_end_to_end_multi_document_prompt_covers_all_selected_with_evidence(
     assert "diabetes.pdf" in prompt
     assert "cardio.pdf" in prompt
     assert "pediatric.pdf" in prompt
-    assert "one paragraph per selected document" in prompt
+    assert "one short section per selected document" in prompt

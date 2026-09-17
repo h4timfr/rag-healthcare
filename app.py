@@ -27,6 +27,7 @@ from src.exceptions import (
     OllamaUnavailableError,
     RagError,
 )
+from src.generation.intent import needs_document_balance
 from src.generation.ollama_client import (
     generate,
     generate_stream,
@@ -100,6 +101,7 @@ def ingest_uploaded_pdfs(files: list[tuple[str, bytes]]) -> list[dict]:
                     "status": "failed",
                     "document_id": None,
                     "chunk_count": None,
+                    "degraded_pages": [],
                     "error": str(e),
                 }
             )
@@ -110,6 +112,7 @@ def ingest_uploaded_pdfs(files: list[tuple[str, bytes]]) -> list[dict]:
                     "status": "skipped" if result["skipped"] else "indexed",
                     "document_id": result["document_id"],
                     "chunk_count": result["chunk_count"],
+                    "degraded_pages": result.get("degraded_pages", []),
                     "error": None,
                 }
             )
@@ -230,9 +233,15 @@ def retrieve_and_build_prompt(
     function's own `prompt_build_ms`.
 
     `document_inventory` (optional) is forwarded to build_prompt() as-is -
-    see its docstring. Retrieval itself (`document_id`/top_k/scoring) is
-    completely unaffected by it; it only changes how the already-retrieved
-    chunks are turned into a prompt.
+    see its docstring. It also marks this as a multi-document turn, which is
+    the precondition for document-balanced retrieval below; scoring, the
+    FAISS/FTS5 searches and the RRF fusion are unaffected either way.
+
+    For an each-document or comparison question over several selected
+    documents, retrieval is asked to balance its allocation across them and
+    `top_k` is replaced by config.BALANCED_CHUNKS_PER_DOCUMENT per selected
+    document. Every other question - including any single-document question -
+    keeps the caller's `top_k` and the unmodified ranking.
 
     `history` (optional) is prior conversation turns, forwarded to
     build_prompt() for GENERATION context only - retrieve_hybrid() above
@@ -249,6 +258,20 @@ def retrieve_and_build_prompt(
     retrieve_kwargs = {"top_k": top_k, "document_id": document_id}
     if timing is not None:
         retrieve_kwargs["timing"] = timing
+
+    # Document-balanced allocation applies only to a multi-document scope
+    # asked an each-document/comparison question. Same conditional-kwarg
+    # reason as `timing` above, and single-document retrieval never reaches
+    # it at all (document_inventory is None in active-document scope).
+    #
+    # This also replaces the caller's `top_k` for that case, deliberately:
+    # the balanced budget is a property of the retrieval strategy, not of
+    # the call site, and deciding it here is what keeps the Streamlit app
+    # and the product QA harness identical without either having to
+    # remember to mirror the other.
+    if document_inventory and needs_document_balance(query, history=history):
+        retrieve_kwargs["balance_by_document"] = True
+        retrieve_kwargs["top_k"] = config.BALANCED_CHUNKS_PER_DOCUMENT * len(document_inventory)
 
     try:
         chunks = retrieve_hybrid(query, **retrieve_kwargs)
@@ -486,6 +509,13 @@ def render_upload_area() -> None:
 
             if result["status"] == "indexed":
                 progress.caption(f"complete - {result['chunk_count']} chunks indexed.")
+                if result.get("degraded_pages"):
+                    st.warning(
+                        f"Page(s) {result['degraded_pages']} of **{uploaded_file.name}** "
+                        "extracted without word boundaries, so keyword search and answer "
+                        "quality will be poor for this document. This is a property of "
+                        "the PDF's text layer, not of your question."
+                    )
             elif result["status"] == "skipped":
                 progress.caption(f"skipped - already indexed ({result['chunk_count']} chunks).")
             else:

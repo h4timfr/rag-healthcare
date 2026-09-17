@@ -9,6 +9,66 @@ from .keyword_index import KeywordIndex
 from .metadata_store import MetadataStore
 
 
+def _allocate_by_document(
+    ranked_by_score: list[int],
+    document_of_chunk: dict[int, str],
+    document_count: int,
+    top_k: int,
+) -> list[int]:
+    """Pick `top_k` chunks from an already-fused ranking, giving each
+    document a fair share of the budget first.
+
+    "Summarize each selected document separately" over three documents used
+    to be answered from whichever documents happened to rank highest overall:
+    the budget was TOP_K * 3, but nothing stopped one document taking most of
+    it, and a document with no chunks in the final list can only be written
+    about by guessing.
+
+    The fix is purely in selection, at the very end of retrieval. Every
+    upstream stage is untouched: the same FAISS search, the same FTS5 search,
+    the same RRF weights and rrf_k, the same candidate_k, the same
+    document-scope filtering. All that changes is which of the ALREADY fused
+    and ALREADY scoped candidates survive truncation.
+
+    Pass 1 gives each document up to `top_k // document_count` of its own
+    best-scoring chunks. Pass 2 fills whatever is left by global score.
+
+    Crucially this cannot pull an irrelevant document into the answer: a
+    document only has chunks here if its chunks were actually retrieved by
+    the dense or keyword search for this query. A document that matched
+    nothing contributes nothing, and its budget goes back to pass 2.
+    """
+    quota = max(1, top_k // document_count)
+
+    taken: list[int] = []
+    per_document: dict[str, int] = {}
+
+    for chunk_id in ranked_by_score:
+        document = document_of_chunk.get(chunk_id)
+        if document is None:
+            continue
+        if per_document.get(document, 0) < quota:
+            per_document[document] = per_document.get(document, 0) + 1
+            taken.append(chunk_id)
+
+    taken = taken[:top_k]
+
+    if len(taken) < top_k:
+        already = set(taken)
+        taken.extend(
+            chunk_id
+            for chunk_id in ranked_by_score
+            # Same document_of_chunk guard as pass 1: a chunk deleted
+            # between fusion and this point has no document, and would be
+            # dropped again by get_chunks() below - spending a slot on it
+            # would silently shrink the evidence the answer is built from.
+            if chunk_id not in already and chunk_id in document_of_chunk
+        )
+        taken = taken[:top_k]
+
+    return taken
+
+
 def retrieve_hybrid(
     query: str,
     top_k: int = config.TOP_K,
@@ -16,6 +76,7 @@ def retrieve_hybrid(
     rrf_k: int = 60,
     document_id: str | list[str] | None = None,
     timing: dict | None = None,
+    balance_by_document: bool = False,
 ) -> list[dict]:
     """Retrieve using FAISS + FTS5 and fuse rankings with weighted RRF.
 
@@ -37,6 +98,11 @@ def retrieve_hybrid(
     order or logic, for the app's per-turn performance panel and the
     scripts/profile_query.py CLI. Omit it (the default) for zero overhead
     beyond a few negligible perf_counter() calls.
+
+    `balance_by_document` (default False - single-document retrieval and
+    ordinary multi-document questions are completely unaffected) changes only
+    which chunks are kept from the END of the fused ranking, for
+    each-document and comparison questions. See _allocate_by_document().
     """
     query = query.strip()
 
@@ -119,14 +185,25 @@ def retrieve_hybrid(
             keyword_weight / (rrf_k + rank)
         )
 
-    ranked_ids = [
+    ranked_by_score = [
         chunk_id
         for chunk_id, _ in sorted(
             fused_scores.items(),
             key=lambda item: item[1],
             reverse=True,
-        )[:top_k]
+        )
     ]
+
+    if balance_by_document and document_ids and len(document_ids) > 1:
+        ranked_ids = _allocate_by_document(
+            ranked_by_score,
+            store.document_ids_for_chunks(ranked_by_score),
+            len(document_ids),
+            top_k,
+        )
+        ranked_ids.sort(key=lambda chunk_id: fused_scores[chunk_id], reverse=True)
+    else:
+        ranked_ids = ranked_by_score[:top_k]
 
     metadata = store.get_chunks(ranked_ids)
 

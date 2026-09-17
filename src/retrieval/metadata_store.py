@@ -228,6 +228,27 @@ class MetadataStore:
 
         return {row["chunk_id"] for row in rows}
 
+    def document_ids_for_chunks(self, chunk_ids: list[int]) -> dict[int, str]:
+        """Map each chunk_id to the document it belongs to.
+
+        Used by retrieve_hybrid's document-balanced allocation, which has to
+        know which document each already-fused candidate came from before it
+        decides which ones to keep. SQLite metadata stays the sole authority
+        for that relation, exactly as the filter_* methods above.
+        """
+        if not chunk_ids:
+            return {}
+
+        with self._connection() as conn:
+            placeholders = ",".join("?" * len(chunk_ids))
+            rows = conn.execute(
+                f"SELECT chunk_id, document_id FROM chunks "
+                f"WHERE chunk_id IN ({placeholders})",
+                chunk_ids,
+            ).fetchall()
+
+        return {row["chunk_id"]: row["document_id"] for row in rows}
+
     def filter_chunk_ids_by_documents(self, chunk_ids: list[int], document_ids: list[str]) -> set[int]:
         """Same as filter_chunk_ids_by_document, but scopes to a SET of
         documents (multi-document analysis mode) instead of exactly one -

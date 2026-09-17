@@ -15,7 +15,7 @@ from src.embedding.embedder import embed_texts
 from src.exceptions import RagError
 from src.ingestion.chunker import chunk_pages
 from src.ingestion.cleaner import clean_text
-from src.ingestion.pdf_extractor import extract_pages
+from src.ingestion.pdf_extractor import degraded_pages, extract_pages
 from src.retrieval.faiss_index import FaissIndex
 from src.retrieval.metadata_store import MetadataStore
 
@@ -52,6 +52,11 @@ def ingest_pdf(pdf_path: str, db_path: str | None = None, faiss_index_path: str 
         return {"document_id": document_id, "chunk_count": existing, "skipped": True}
 
     pages = extract_pages(pdf_path)
+    # Reported, not repaired - see pdf_extractor.degraded_pages(). The
+    # document is still indexed: degraded text is worse than clean text but
+    # better than no document, and the caller is told which pages are
+    # affected so a bad answer can be traced to its cause.
+    low_quality_pages = degraded_pages(pages)
     cleaned_pages = [{"page": p["page"], "text": clean_text(p["text"])} for p in pages]
     chunks = chunk_pages(cleaned_pages, config.CHUNK_SIZE_WORDS, config.CHUNK_OVERLAP_WORDS)
 
@@ -77,7 +82,17 @@ def ingest_pdf(pdf_path: str, db_path: str | None = None, faiss_index_path: str 
     index.save()
 
     print(f"Ingested '{pdf_path}': {len(chunks)} chunks (document_id={document_id})")
-    return {"document_id": document_id, "chunk_count": len(chunks), "skipped": False}
+    if low_quality_pages:
+        print(
+            f"  WARNING: page(s) {low_quality_pages} extracted without word boundaries. "
+            f"Keyword search and answer quality will be poor for this document."
+        )
+    return {
+        "document_id": document_id,
+        "chunk_count": len(chunks),
+        "skipped": False,
+        "degraded_pages": low_quality_pages,
+    }
 
 
 def main():

@@ -24,6 +24,20 @@ CHUNK_OVERLAP_WORDS = 40
 # --- Retrieval ---
 TOP_K = 5
 
+# Per-document chunk budget for each-document/comparison questions, where
+# retrieval balances its allocation across the selected documents (see
+# hybrid_retriever._allocate_by_document).
+#
+# Lower than TOP_K on purpose. The unbalanced multi-document budget is
+# TOP_K * number_of_documents, and it has to be that large because nothing
+# guarantees the documents are represented - it buys coverage with volume,
+# and often still misses. Balanced allocation guarantees the coverage
+# directly, so the same answer needs fewer chunks: for three documents this
+# is 9 chunks instead of 15, which measurably shortens a prompt that is
+# otherwise dominated by whichever document happens to have the longest
+# chunks.
+BALANCED_CHUNKS_PER_DOCUMENT = 3
+
 # --- Ollama generation ---
 OLLAMA_HOST = "http://localhost:11434"
 OLLAMA_MODEL = "llama3.2:3b"

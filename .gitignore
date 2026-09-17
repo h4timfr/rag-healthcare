@@ -37,6 +37,19 @@ data/evaluation_aggregate*.txt
 data/evaluation_corpus.json
 data/healthcare_eval_questions.json
 
+# Product answer-quality QA dataset: like healthcare_eval_questions.json
+# above, several of its questions/required_facts embed real clinical facts
+# (diagnoses, dates, measurements, medications) from the two private
+# user-uploaded sample clinical reports in the production index (Pediatric
+# Report.pdf, OMC Report Sample - Cardio.pdf) - same category of content,
+# same reason for exclusion.
+data/product_qa.json
+
+# Product QA run output - regenerable locally via scripts/run_product_qa.py;
+# contains full generated answers/prompts (including retrieved clinical
+# text from the private documents above) for manual failure inspection.
+output/
+
 # Local export bundles for external sharing - duplicate what's already in
 # research/ and data/, and some contain the private evaluation outputs above.
 /research_report_package.zip

@@ -146,6 +146,50 @@ required before deletion.
   (dense weight 2.0, keyword weight 1.0, `rrf_k=60`), so a chunk that ranks
   well on either signal contributes to the final top-k. This is what the app
   uses by default; `scripts/query.py` and `chat.py` also use it.
+- **Document-balanced allocation** applies only when several documents are
+  selected *and* the question asks about each of them or compares them
+  ("summarize each selected document separately", "compare the selected
+  documents"). It changes nothing upstream - same FAISS search, same FTS5
+  search, same RRF weights and `candidate_k` - and only changes which of the
+  already-fused candidates survive truncation, giving each document a share
+  of the budget before the remainder is filled by score. A document that
+  matched nothing still contributes nothing, so balancing cannot pull
+  irrelevant material into an answer. See
+  [`_allocate_by_document`](src/retrieval/hybrid_retriever.py).
+
+## Answer generation
+
+The production answer path is shaped by the question, using deterministic
+rules only - no second model call, and no extra latency.
+
+- **Intent classification** ([`src/generation/intent.py`](src/generation/intent.py))
+  sorts a question into `factual`, `numeric`, `summary`, `each_document`,
+  `comparison`, `multi_part`, `follow_up` or `unsupported` with a small set
+  of regexes. `unsupported` is deliberately never inferred from wording -
+  "What was the patient's blood type?" is indistinguishable from an
+  answerable factual question, and only missing evidence makes it
+  unsupported.
+- **Evidence-first prompting**
+  ([`src/generation/prompt_builder.py`](src/generation/prompt_builder.py))
+  tells the model the retrieved evidence is authoritative, that it must
+  check it before declaring anything unavailable, and that describing "the
+  context" is not answering the question. Each intent adds exactly one short
+  ANSWER STYLE block; multi-part questions additionally get a numbered plan
+  naming each requested component.
+- **Structured evidence context** for multi-document questions groups
+  retrieved text into self-describing `DOCUMENT:` / `PAGE:` / `EVIDENCE [n]:`
+  blocks, so no block can be read without knowing which document it came
+  from. A selected document with no retrieved evidence is stated explicitly
+  rather than being omitted.
+- **Post-generation validation**
+  ([`src/generation/validation.py`](src/generation/validation.py)) is a
+  deterministic checker for empty answers, refusals issued on top of
+  retrieved evidence, meta-commentary, hedging, missing document sections
+  and missing answer parts. It reports; it never rewrites an answer. Results
+  are surfaced by the product QA harness.
+
+The legacy `scripts/evaluate.py` benchmark path is unchanged and still uses
+the original prompt and instruction set.
 
 ## Where local data lives
 
