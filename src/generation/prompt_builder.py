@@ -146,7 +146,7 @@ ANSWER_STYLES = {
 }
 
 
-def build_answer_plan(query: str) -> str:
+def build_answer_plan(query: str, history: list[dict] | None = None) -> str:
     """Numbered plan for a multi-part question, e.g.
 
         This question has 2 parts. Answer each one separately:
@@ -157,8 +157,13 @@ def build_answer_plan(query: str) -> str:
     a single flat refusal covering both parts at once, while the evidence for
     both was present. Naming the parts forces each one to be looked for
     separately instead of being disposed of together.
+
+    Uses intent.decompose_question() rather than split_question_parts()
+    directly, so a follow-up-shaped multi-part question ("X? What about the
+    first one?") gets the same numbered plan as one joined by "and" - see
+    that function's docstring for how it splits and resolves parts.
     """
-    parts = intent_module.split_question_parts(query)
+    parts = intent_module.decompose_question(query, history=history)
     if len(parts) < 2:
         return ""
 
@@ -168,6 +173,9 @@ def build_answer_plan(query: str) -> str:
         f"This question has {len(parts)} parts. Answer each one separately as a "
         "numbered item, in this order:\n"
         f"{lines}\n"
+        "- If the EVIDENCE below is grouped under per-part \"PART N (...)\" "
+        "headings, use each heading to find that part's own evidence - do not "
+        "borrow evidence from another part's heading.\n"
         "- Look for each part in the EVIDENCE on its own. The parts are "
         "independent; evidence for one is not evidence about another.\n"
         "- If one part genuinely is not in the EVIDENCE, say so for that part "
@@ -193,13 +201,33 @@ def build_answer_plan(query: str) -> str:
 _ANSWER_STYLE_PLACEMENT = "after EVIDENCE, immediately before USER QUESTION"
 
 
-def build_answer_style(query: str, resolved_intent: str) -> str:
-    """The ANSWER STYLE block for this turn - one short block, never more."""
-    if resolved_intent == intent_module.MULTI_PART:
-        plan = build_answer_plan(query)
+def build_answer_style(
+    query: str,
+    resolved_intent: str,
+    history: list[dict] | None = None,
+) -> str:
+    """The ANSWER STYLE block for this turn - one short block, never more.
+
+    A question that decomposes into 2+ parts always gets the multi-part
+    plan, regardless of which single label classify_intent() settled on for
+    it - in particular FOLLOW_UP, which wins classify_intent()'s priority
+    whenever history is present and the question also matches a follow-up
+    trigger like "what about". That label is right for the ANSWER STYLE
+    text only when there is genuinely one thing being asked; "What happened
+    during the second admission? What about the first one?" matches both
+    "what about" and being multi-part, and it is multi-part that should
+    shape the answer, or the second admission's plan silently disappears
+    behind a style written for a single reference.
+
+    EACH_DOCUMENT/COMPARISON are the one exception: they already have their
+    own established per-document structure (see build_multi_document_prompt),
+    and decomposing on top of that would double-structure the answer for no
+    benefit.
+    """
+    if resolved_intent not in (intent_module.EACH_DOCUMENT, intent_module.COMPARISON):
+        plan = build_answer_plan(query, history=history)
         if plan:
             return plan
-        return ANSWER_STYLES[intent_module.FACTUAL]
     return ANSWER_STYLES.get(resolved_intent, ANSWER_STYLES[intent_module.FACTUAL])
 
 
@@ -475,6 +503,49 @@ def build_prompt(
     )
 
 
+def build_part_context(chunks: list[dict], parts: list[str]) -> str:
+    """Group retrieved evidence by which requested part of a multi-part
+    question it was retrieved for - the EVIDENCE-side counterpart to
+    build_answer_plan()'s "Part 1: ... Part 2: ..." instruction.
+
+    Expects each chunk to carry a `part` key (1-indexed, matching `parts`'
+    numbering) as produced by retrieve_for_question() - see that function's
+    docstring for why retrieval runs once per part instead of once for the
+    whole question. A chunk with no `part` key is treated as part 1, so a
+    caller that mixes tagged and untagged chunks still gets a well-formed
+    (if imperfectly grouped) context rather than a KeyError.
+
+    A part with no matching evidence still gets its own heading and an
+    explicit "no evidence retrieved" marker, on the same reasoning as
+    build_multi_document_context()'s per-document placeholder: a silently
+    missing section reads as "nothing to say" and invites the model to
+    invent content for it, and a short marker (not a full sentence, so it
+    cannot be quoted back as an answer) keeps that from happening for a
+    part exactly as it already does for a document.
+    """
+    by_part: dict[int, list[dict]] = {}
+    for chunk in chunks:
+        by_part.setdefault(chunk.get("part", 1), []).append(chunk)
+
+    sections = []
+    for i, part_query in enumerate(parts, start=1):
+        part_chunks = by_part.get(i, [])
+
+        if not part_chunks:
+            sections.append(f"PART {i} ({part_query}):\n  EVIDENCE: none")
+            continue
+
+        blocks = "\n\n".join(
+            f"  PAGE: {chunk['page']}\n"
+            f"  EVIDENCE [{chunk['rank']}]:\n"
+            f"  {chunk['text']}"
+            for chunk in part_chunks
+        )
+        sections.append(f"PART {i} ({part_query}):\n{blocks}")
+
+    return "\n\n".join(sections)
+
+
 def build_production_prompt(
     query: str,
     chunks: list[dict],
@@ -490,10 +561,23 @@ def build_production_prompt(
     introduced as EVIDENCE rather than CONTEXT, because a section the model
     reads as "the context" is a section it writes sentences about ("the
     context provided does not contain...") instead of answering from.
+
+    For a multi-part question whose chunks were retrieved per-part (i.e. by
+    retrieve_for_question(), which is what tags them with `part`), the
+    evidence is grouped under "PART N (...)" headings instead of one flat
+    list - so each part's own evidence is findable on its own, matching the
+    "Part 1: ... Part 2: ..." plan build_answer_style() attaches below it.
+    A question that isn't multi-part, or whose chunks were retrieved by a
+    caller that doesn't tag them (e.g. scripts/evaluate.py), takes the
+    original flat build_context() path unchanged.
     """
-    context = build_context(chunks, target_scope=None)
+    parts = intent_module.decompose_question(query, history=history)
+    if len(parts) > 1 and any("part" in chunk for chunk in chunks):
+        context = build_part_context(chunks, parts)
+    else:
+        context = build_context(chunks, target_scope=None)
     resolved_intent = intent_module.classify_intent(query, history=history)
-    answer_style = build_answer_style(query, resolved_intent)
+    answer_style = build_answer_style(query, resolved_intent, history=history)
 
     history_text = format_conversation_history(history)
     history_section = f"\n\nRECENT CONVERSATION:\n{history_text}" if history_text else ""
@@ -656,7 +740,7 @@ def build_multi_document_prompt(
             "not silently leave it out."
         )
 
-    answer_style = build_answer_style(query, resolved_intent)
+    answer_style = build_answer_style(query, resolved_intent, history=history)
 
     # A filled-in skeleton, not a description of one. Telling this model to
     # "use these section names" and listing them produced sections called

@@ -16,6 +16,7 @@ from src.generation.prompt_builder import (
     build_answer_plan,
     build_answer_style,
     build_multi_document_context,
+    build_part_context,
     build_production_prompt,
     build_prompt,
 )
@@ -174,6 +175,160 @@ def test_multi_part_intent_without_a_split_falls_back_to_direct_answer():
 
 def test_unknown_intent_falls_back_to_factual_style():
     assert "Give the answer directly" in build_answer_style("anything", "not_a_real_intent")
+
+
+# --- follow-up-shaped multi-part questions (regression) -----------------------
+#
+# classify_intent() still returns FOLLOW_UP for a question matching "what
+# about" when history is present - that priority is unchanged (see
+# test_intent.py). What changes is build_answer_style(): it now checks
+# decomposition BEFORE falling back to the FOLLOW_UP label's own style, so a
+# question that is both a follow-up trigger AND genuinely multi-part still
+# gets the numbered plan instead of the single-reference follow-up wording.
+
+
+def _part_chunk(document_id, source, page, text, part, rank):
+    return {
+        "chunk_id": rank,
+        "document_id": document_id,
+        "source": source,
+        "page": page,
+        "text": text,
+        "score": 1.0 / rank,
+        "rank": rank,
+        "part": part,
+        "part_query": text,
+    }
+
+
+def test_regression_second_admission_then_what_about_the_first_one():
+    """Exact regression case from live testing: the prompt must contain a
+    numbered plan naming both admissions, not the single-reference
+    FOLLOW_UP style, and (since these chunks are part-tagged, as
+    retrieve_for_question() tags them) evidence grouped under one PART
+    heading per admission."""
+    query = "What happened during the second admission? What about the first one?"
+    chunks = [
+        _part_chunk("d1", "a.pdf", 3, "Second admission: chest pain, discharged stable.", part=1, rank=1),
+        _part_chunk("d1", "a.pdf", 1, "First admission: fever, treated with antibiotics.", part=2, rank=2),
+    ]
+
+    prompt = build_prompt(query, chunks, history=[{"role": "user", "content": "..."}], disable_benchmark_scope=True)
+
+    assert "This question has 2 parts" in prompt
+    assert "Part 1: What happened during the second admission?" in prompt
+    assert "Part 2: What happened during the first admission?" in prompt
+    assert "PART 1 (What happened during the second admission?):" in prompt
+    assert "PART 2 (What happened during the first admission?):" in prompt
+    assert "continues the conversation above" not in prompt  # not the plain FOLLOW_UP style
+    assert prompt.count("ANSWER STYLE") == 1
+
+
+def test_multi_part_follow_up_beats_the_follow_up_style_even_without_history():
+    """The same decomposition applies with no history at all - a follow-up
+    LABEL requires history, but genuine multi-part decomposition does not."""
+    query = "What happened during the second admission? What about the first one?"
+    prompt = _production(query)
+
+    assert "This question has 2 parts" in prompt
+
+
+def test_single_reference_follow_up_keeps_its_own_style_unchanged():
+    """Regression guard: a follow-up that is NOT multi-part (only one thing
+    asked, resolved via history) must still get the plain FOLLOW_UP style -
+    this is test_follow_up_style_points_at_the_conversation's exact case,
+    re-asserted here against the new decomposition-aware build_answer_style."""
+    history = [
+        {"role": "user", "content": "Summarize each selected document."},
+        {"role": "assistant", "content": "Pediatric Report.pdf: ..."},
+    ]
+    prompt = _production("What about the medications in that report?", history=history)
+
+    assert "continues the conversation above" in prompt
+    assert "This question has" not in prompt
+
+
+# --- build_part_context --------------------------------------------------------
+
+
+def test_build_part_context_groups_evidence_under_its_part():
+    parts = ["What happened during the second admission?", "What happened during the first admission?"]
+    chunks = [
+        _part_chunk("d1", "a.pdf", 3, "second admission text", part=1, rank=1),
+        _part_chunk("d1", "a.pdf", 1, "first admission text", part=2, rank=2),
+    ]
+
+    context = build_part_context(chunks, parts)
+
+    assert "PART 1 (What happened during the second admission?):" in context
+    assert "PART 2 (What happened during the first admission?):" in context
+    assert context.index("second admission text") < context.index("PART 2")
+    assert "first admission text" in context
+
+
+def test_build_part_context_flags_a_part_with_no_evidence():
+    """One part having evidence and another not: the empty part gets an
+    explicit marker, not silence - the same reasoning as
+    build_multi_document_context()'s per-document placeholder."""
+    parts = ["What happened during the second admission?", "What happened during the first admission?"]
+    chunks = [
+        _part_chunk("d1", "a.pdf", 3, "second admission text", part=1, rank=1),
+    ]
+
+    context = build_part_context(chunks, parts)
+
+    assert "PART 1 (What happened during the second admission?):" in context
+    assert "second admission text" in context
+    assert "PART 2 (What happened during the first admission?):\n  EVIDENCE: none" in context
+
+
+def test_build_part_context_placeholder_is_not_a_quotable_sentence():
+    """Mirrors test_no_evidence_placeholder_is_not_a_quotable_sentence for
+    the multi-document case - a marker the model could copy back verbatim
+    as if it were an answer would defeat the point of having one."""
+    parts = ["a", "b"]
+    chunks = [_part_chunk("d1", "a.pdf", 1, "text", part=1, rank=1)]
+
+    context = build_part_context(chunks, parts)
+
+    assert "no evidence was retrieved" not in context.lower()
+    assert "EVIDENCE: none" in context
+
+
+def test_untagged_chunks_do_not_crash_build_part_context():
+    """A caller that doesn't tag chunks with `part` (e.g. a hand-built test
+    fixture, or a future caller that hasn't adopted retrieve_for_question)
+    must not KeyError - every untagged chunk is treated as part 1."""
+    parts = ["a", "b"]
+    chunks = [
+        {"chunk_id": 1, "document_id": "d1", "source": "a.pdf", "page": 1, "text": "t", "score": 0.1, "rank": 1},
+    ]
+
+    context = build_part_context(chunks, parts)
+
+    assert "PART 1 (a):" in context
+    assert "t" in context
+    assert "PART 2 (b):\n  EVIDENCE: none" in context
+
+
+def test_build_production_prompt_uses_flat_context_when_chunks_are_not_part_tagged():
+    """A multi-part question whose chunks were retrieved by a caller that
+    doesn't tag them (e.g. scripts/evaluate.py's legacy path, or any single
+    retrieve_hybrid() call) must not produce empty/broken PART headings - it
+    falls back to the original flat evidence list."""
+    query = "What test was ordered, and what medications were prescribed?"
+    prompt = build_production_prompt(query, CHUNKS)
+
+    assert "PART 1 (" not in prompt
+    assert "[1] Source: a.pdf, page 2" in prompt
+
+
+def test_single_part_question_never_gets_part_headings():
+    chunks = [_part_chunk("d1", "a.pdf", 1, "text", part=1, rank=1)]
+    prompt = build_production_prompt("What was the chief complaint?", chunks)
+
+    assert "PART 1 (" not in prompt
+    assert "This question has" not in prompt
 
 
 # --- structured evidence context ---------------------------------------------

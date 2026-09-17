@@ -161,6 +161,137 @@ def is_multi_part(query: str) -> bool:
     return len(split_question_parts(query)) > 1
 
 
+# ---------------------------------------------------------------------------
+# Decomposition for follow-up-shaped multi-part questions.
+#
+# split_question_parts() above only finds parts joined by "and"/"as well as"
+# inside one sentence. It never split "What happened during the second
+# admission? What about the first one?" - two separate sentences, the second
+# a bare tag question - so that question retrieved as a single blended
+# embedding of both admissions, and the model answered mostly about
+# whichever one dominated it. decompose_question() below finds that shape
+# too, and resolves the elliptical second part ("the first one") into a
+# standalone question by reusing the first part's own phrasing - the same
+# information a person tracking the conversation would use, applied
+# deterministically instead of via another model call.
+# ---------------------------------------------------------------------------
+
+# A second sentence that is itself a tag question: "...? What about the
+# first one?", "...? How about the third?". Splits only right before it, so
+# an ordinary multi-sentence answer-shaped question is not touched.
+_TAG_QUESTION_SPLIT = re.compile(
+    r"(?<=[?.])\s+(?=(?:what|how)\s+about\b)",
+    flags=re.IGNORECASE,
+)
+
+# A part (or a whole standalone question) that names nothing but a position:
+# "what about the first?", "how about the second one?". Capture group 1 is
+# the ordinal it asks for.
+_ELLIPTICAL_REFERENCE = re.compile(
+    r"^\s*(?:what|how)\s+about\s+the\s+"
+    r"(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|"
+    r"1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th)"
+    r"(?:\s+one)?\s*\??\s*$",
+    flags=re.IGNORECASE,
+)
+
+# The "<ordinal> <noun>" phrase an elliptical reference borrows its noun
+# from, e.g. "second admission" in "What happened during the second
+# admission?" - deliberately the same ordinal vocabulary as
+# _ELLIPTICAL_REFERENCE, so a resolved reference only ever substitutes one
+# ordinal for another rather than inventing wording.
+_ORDINAL_ANCHOR = re.compile(
+    r"\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|"
+    r"1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th)\b\s+(\w+)",
+    flags=re.IGNORECASE,
+)
+
+
+def _resolve_elliptical_reference(part: str, anchor_text: str | None) -> str:
+    """Resolve a bare ordinal-reference fragment into a standalone question
+    by substituting its ordinal into `anchor_text`'s own "<ordinal> <noun>"
+    phrase:
+
+        anchor: "What happened during the second admission?"
+        part:   "What about the first one?"
+        ->      "What happened during the first admission?"
+
+    Returns `part` unchanged if it is not an elliptical reference, or if no
+    anchor (or no substitutable ordinal+noun within it) is available - this
+    never guesses at content it has no basis for.
+    """
+    match = _ELLIPTICAL_REFERENCE.match(part.strip())
+    if not match or not anchor_text:
+        return part
+
+    new_ordinal = match.group(1)
+    anchor_match = _ORDINAL_ANCHOR.search(anchor_text)
+    if anchor_match is None:
+        return part
+
+    old_ordinal = anchor_match.group(1)
+    return re.sub(
+        rf"\b{re.escape(old_ordinal)}\b",
+        new_ordinal,
+        anchor_text,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+
+
+def decompose_question(query: str, history: list[dict] | None = None) -> list[str]:
+    """Split `query` into standalone sub-questions, resolving an elliptical
+    ordinal reference ("what about the first?") against the nearest
+    available anchor before it is used for retrieval or shown to the model.
+
+    Two splitting passes, applied in order:
+      1. split_question_parts() - "X, and Y" - unchanged from today.
+      2. _TAG_QUESTION_SPLIT on each resulting piece - "X? What about Y?" -
+         so a trailing tag question is never left stuck to the part before
+         it, whichever pass produced that part.
+
+    Every part after the first that matches _ELLIPTICAL_REFERENCE is
+    resolved against the PRECEDING part (already-resolved, so a chain of
+    several - "the second? the first? the third?" - each resolve against
+    the nearest one with real content).
+
+    If splitting finds only one part and IT is itself an elliptical
+    reference ("What about the first?" as the entire message), it is
+    resolved against the most recent user turn in `history` instead - the
+    only case where history reaches this function, and only to supply the
+    anchor phrase, never to be embedded or searched itself (see
+    retrieve_for_question(), which is the only caller that matters for
+    retrieval).
+
+    Returns a single-element list for an ordinary question, exactly like
+    split_question_parts(), so `len(...) > 1` means "multi-part" either way.
+    """
+    query = query or ""
+    parts = split_question_parts(query)
+
+    expanded: list[str] = []
+    for part in parts:
+        tagged = [p.strip() for p in _TAG_QUESTION_SPLIT.split(part) if p and p.strip()]
+        expanded.extend(tagged if len(tagged) > 1 else [part])
+    parts = expanded
+
+    if len(parts) > 1:
+        resolved = [parts[0]]
+        for part in parts[1:]:
+            resolved.append(_resolve_elliptical_reference(part, resolved[-1]))
+        return resolved
+
+    if history:
+        last_user = next(
+            (str(turn.get("content", "")) for turn in reversed(history) if turn.get("role") == "user"),
+            None,
+        )
+        if last_user:
+            return [_resolve_elliptical_reference(query, last_user)]
+
+    return parts
+
+
 def _matches(patterns, text: str) -> bool:
     return any(pattern.search(text) for pattern in patterns)
 

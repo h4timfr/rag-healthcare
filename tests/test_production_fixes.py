@@ -138,6 +138,52 @@ def test_single_document_stream_omits_num_predict_override(monkeypatch):
     assert captured["num_predict"] is None
 
 
+# --- resolve_num_predict: multi-part single-document questions need the ------
+# --- larger budget too, not only multi-document answers ----------------------
+#
+# Live testing hit this directly: "What happened during the second
+# admission? What about the first one?" was measured hitting the default
+# 256-token cap mid sentence, part way through its second (correctly
+# retrieved and correctly structured) section.
+
+
+def test_multi_document_scope_gets_the_larger_budget():
+    assert app.resolve_num_predict("anything", None, [{"document_id": "d1", "source": "a.pdf"}]) == (
+        config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT
+    )
+
+
+def test_multi_part_single_document_question_gets_the_larger_budget():
+    query = "What happened during the second admission? What about the first one?"
+    assert app.resolve_num_predict(query, None, None) == config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT
+
+
+def test_standalone_elliptical_follow_up_keeps_the_default_budget():
+    """"What about the first?" alone resolves to exactly ONE clean
+    sub-question ("What happened during the first admission?") - it is a
+    single-part question after resolution, not two, so it needs the normal
+    single-answer budget, not the multi-part one."""
+    history = [{"role": "user", "content": "What happened during the second admission?"}]
+    assert app.resolve_num_predict("What about the first?", history, None) is None
+
+
+def test_multi_part_tag_question_in_the_same_message_gets_the_larger_budget():
+    history = [{"role": "user", "content": "unrelated earlier turn"}]
+    query = "What happened during the second admission? What about the first one?"
+    assert app.resolve_num_predict(query, history, None) == config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT
+
+
+def test_ordinary_single_part_single_document_question_keeps_the_default():
+    assert app.resolve_num_predict("What medication was prescribed?", None, None) is None
+
+
+def test_ordinal_document_reference_keeps_the_default():
+    """"the second document" is a document reference, not a multi-part
+    question - must not trigger the larger budget on ordinal-word content
+    alone."""
+    assert app.resolve_num_predict("What about the second document?", None, None) is None
+
+
 # --- 3. chat.py history placement (never after ANSWER:) ----------------------
 
 

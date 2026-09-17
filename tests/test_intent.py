@@ -259,6 +259,92 @@ def test_split_never_returns_empty():
     assert split_question_parts("") == [""]
 
 
+# --- decompose_question: follow-up-shaped multi-part questions ----------------
+#
+# split_question_parts() only ever found parts joined by "and"/"as well as"
+# inside one sentence. decompose_question() additionally finds a second
+# sentence that is itself a tag question ("X? What about Y?"), and resolves
+# an elliptical ordinal reference ("the first one") against the nearest
+# available anchor - a preceding part of the same question, or the most
+# recent user turn in history for a standalone reference.
+
+from src.generation.intent import decompose_question  # noqa: E402
+
+
+def test_regression_second_admission_then_what_about_the_first_one():
+    """Exact regression case: live testing showed this answered mostly
+    about the first admission, with retrieved evidence that did not clearly
+    cover both requested parts - a single blended embedding of the whole
+    compound question, not two separately-retrieved parts."""
+    parts = decompose_question("What happened during the second admission? What about the first one?")
+    assert parts == [
+        "What happened during the second admission?",
+        "What happened during the first admission?",
+    ]
+
+
+def test_tag_question_split_is_multi_part():
+    query = "What medication was given during the second visit? What about the first?"
+    parts = decompose_question(query)
+    assert len(parts) == 2
+    assert parts[1] == "What medication was given during the first visit?"
+
+
+def test_what_about_the_first_alone_resolves_against_history():
+    history = [
+        {"role": "user", "content": "What happened during the second admission?"},
+        {"role": "assistant", "content": "During the second admission, ..."},
+    ]
+    parts = decompose_question("What about the first?", history=history)
+    assert parts == ["What happened during the first admission?"]
+
+
+def test_what_about_the_first_alone_without_history_is_left_unresolved():
+    """No anchor to resolve against - returned as-is rather than guessed at."""
+    assert decompose_question("What about the first?") == ["What about the first?"]
+
+
+def test_ordinal_document_reference_is_not_treated_as_a_question_part():
+    """"the second document" is a document reference (see
+    src/retrieval/document_reference.py), not an elliptical content
+    reference - decompose_question must not try to resolve it as one."""
+    assert decompose_question("What about the second document?") == ["What about the second document?"]
+
+
+def test_one_part_with_evidence_one_without_still_decomposes_both():
+    """Decomposition itself doesn't know about evidence - it must produce
+    both parts regardless of whether retrieval later finds anything for
+    either one (that is retrieve_for_question()'s / build_part_context()'s
+    job, covered in their own tests)."""
+    parts = decompose_question("What happened during the second admission? What about the first one?")
+    assert len(parts) == 2
+
+
+def test_single_part_question_is_unchanged_by_decomposition():
+    query = "What was the patient's chief complaint?"
+    assert decompose_question(query) == [query]
+    assert decompose_question(query, history=[{"role": "user", "content": "anything"}]) == [query]
+
+
+def test_plain_and_conjunction_multi_part_still_works_via_decompose():
+    """decompose_question must not regress the existing "X, and Y" split."""
+    query = (
+        "What medications was the patient discharged on, and what condition was "
+        "found during the second admission?"
+    )
+    assert decompose_question(query) == split_question_parts(query)
+
+
+def test_three_way_chain_resolves_each_against_the_nearest_anchor():
+    query = "What happened during the second admission? What about the third? What about the first?"
+    parts = decompose_question(query)
+    assert parts == [
+        "What happened during the second admission?",
+        "What happened during the third admission?",
+        "What happened during the first admission?",
+    ]
+
+
 # --- document balance ---------------------------------------------------------
 
 

@@ -27,7 +27,7 @@ from src.exceptions import (
     OllamaUnavailableError,
     RagError,
 )
-from src.generation.intent import needs_document_balance
+from src.generation.intent import decompose_question, needs_document_balance
 from src.generation.ollama_client import (
     generate,
     generate_stream,
@@ -37,7 +37,7 @@ from src.generation.ollama_client import (
 from src.generation.prompt_builder import build_prompt
 from src.retrieval.document_reference import resolve_document_reference
 from src.retrieval.faiss_index import FaissIndex
-from src.retrieval.hybrid_retriever import retrieve_hybrid
+from src.retrieval.hybrid_retriever import retrieve_for_question, retrieve_hybrid
 from src.retrieval.metadata_store import MetadataStore
 
 TAGLINE = "A retrieval-augmented question-answering prototype over healthcare PDFs"
@@ -249,6 +249,34 @@ def resolve_retrieval_top_k(
     return config.TOP_K
 
 
+def resolve_num_predict(
+    query: str,
+    history: list[dict] | None,
+    document_inventory: list[dict] | None,
+) -> int | None:
+    """The Ollama `num_predict` override for this turn, or None for the
+    single-document, single-part default (config.OLLAMA_NUM_PREDICT).
+
+    config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT was originally sized only for
+    multi-document answers, but a multi-part question over a SINGLE
+    document needs the same larger budget just as much: "What happened
+    during the second admission? What about the first one?" was measured
+    hitting the default 256-token cap mid sentence, part way through its
+    second section - the model never got to finish answering the part
+    retrieve_for_question() exists to guarantee evidence for in the first
+    place. Reused rather than adding a second, identically-sized constant.
+
+    Uses the same intent.decompose_question() check retrieve_and_build_prompt()
+    itself uses for the multi-part retrieval decision, so this can never
+    disagree with whether the prompt actually ended up structured as
+    multiple parts.
+    """
+    multi_part = len(decompose_question(query, history=history)) > 1
+    if document_inventory or multi_part:
+        return config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT
+    return None
+
+
 def retrieve_and_build_prompt(
     query: str,
     top_k: int = config.TOP_K,
@@ -286,9 +314,24 @@ def retrieve_and_build_prompt(
     keeps the caller's `top_k` and the unmodified ranking.
 
     `history` (optional) is prior conversation turns, forwarded to
-    build_prompt() for GENERATION context only - retrieve_hybrid() above
-    only ever sees the clean `query` string, never history, so conversation
-    context can never blur retrieval matching.
+    build_prompt() for GENERATION context, and also to retrieve_for_question()
+    below for the single-document path. Conversation TEXT itself is never
+    embedded or searched either way - retrieve_for_question() only ever uses
+    history to resolve an elliptical reference ("what about the first?")
+    into a standalone question BEFORE retrieval runs (see
+    intent.decompose_question), so what reaches FAISS/FTS5 is always a
+    clean information need, never a blended transcript.
+
+    A single-document question that asks about more than one part - joined
+    by "and", or phrased as a follow-up tag ("X? What about Y?", "What about
+    the first?") - is retrieved one part at a time and merged, instead of as
+    one embedding of the whole compound question; see
+    retrieve_for_question()'s docstring. This is deliberately scoped to the
+    single-document path (document_inventory falsy here) only - multi-document
+    balanced allocation above already gives a comparison/each-document
+    question its own breadth guarantee along the document axis, and layering
+    per-part retrieval on top of that was judged more complexity than the
+    reported failure (which was always single-document) warranted.
 
     Always disables prompt_builder's benchmark-specific target-scope
     detection (see build_prompt's docstring): this is the app's real
@@ -347,7 +390,21 @@ def retrieve_and_build_prompt(
         )
 
     try:
-        chunks = retrieve_hybrid(query, **retrieve_kwargs)
+        if document_inventory:
+            # Multi-document retrieval (balanced allocation, document-scoped
+            # candidate filtering) is untouched by this - see
+            # retrieve_for_question()'s docstring for why per-part retrieval
+            # is deliberately scoped to the single-document path only.
+            chunks = retrieve_hybrid(query, **retrieve_kwargs)
+        else:
+            chunks = retrieve_for_question(
+                query,
+                history=history,
+                top_k=retrieve_kwargs["top_k"],
+                document_id=retrieve_kwargs.get("document_id"),
+                timing=timing,
+                retrieve_fn=retrieve_hybrid,
+            )
     except ValueError as e:
         raise EmptyQueryError(str(e)) from e
 
@@ -1110,7 +1167,7 @@ def render_chat(
         st.write(query)
 
     top_k = resolve_retrieval_top_k(analysis_scope, selected_document_ids)
-    num_predict = config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT if document_inventory else None
+    num_predict = resolve_num_predict(query, prior_history, document_inventory)
 
     with st.chat_message("assistant"):
         timing: dict = {}

@@ -1,21 +1,28 @@
 import sys
 
 from src.exceptions import EmptyQueryError, InsufficientRetrievalError
-from src.retrieval.hybrid_retriever import retrieve_hybrid
+from src.retrieval.hybrid_retriever import retrieve_for_question, retrieve_hybrid
 from src.generation.prompt_builder import build_prompt
 from src.generation.ollama_client import generate
 
 
 def ask(query: str, history: list[dict]) -> str:
-    # Retrieval always gets the clean current question - embedding the raw
-    # conversation transcript into it would blur the dense/keyword match
-    # against whatever earlier turns happened to mention, not just the
-    # current question. retrieve_hybrid raises plain ValueError (not a
-    # RagError) on empty query and returns [] rather than raising when
-    # nothing is found; normalize both to the same RagError-based contract
-    # the dense path already had.
+    # Retrieval never embeds or searches the raw conversation transcript -
+    # that would blur the dense/keyword match against whatever earlier turns
+    # happened to mention, not just the current question. retrieve_for_question
+    # only uses `history` to resolve an elliptical reference ("what about the
+    # first?", or a multi-part follow-up like "...second admission? What
+    # about the first one?") into a standalone question BEFORE retrieval
+    # runs, and to retrieve a genuinely multi-part question one part at a
+    # time instead of as a single blended embedding - see its docstring and
+    # intent.decompose_question(). A single-part question takes exactly the
+    # old path: one retrieve_hybrid(query) call, unchanged.
+    #
+    # retrieve_hybrid raises plain ValueError (not a RagError) on empty query
+    # and returns [] rather than raising when nothing is found; normalize
+    # both to the same RagError-based contract the dense path already had.
     try:
-        chunks = retrieve_hybrid(query)
+        chunks = retrieve_for_question(query, history=history, retrieve_fn=retrieve_hybrid)
     except ValueError as e:
         raise EmptyQueryError(str(e)) from e
 

@@ -4,6 +4,7 @@ import time
 
 from .. import config
 from ..embedding.embedder import embed_query
+from ..generation.intent import decompose_question
 from .faiss_index import FaissIndex
 from .keyword_index import KeywordIndex
 from .metadata_store import MetadataStore
@@ -232,3 +233,107 @@ def retrieve_hybrid(
         timing["fusion_ms"] = (t4 - t3) * 1000
 
     return results
+
+
+def _call_retrieve(retrieve_fn, query, top_k, document_id, timing):
+    """retrieve_fn(query, top_k=..., [document_id=...], [timing=...]),
+    omitting document_id/timing whenever they are None - the same
+    conditional-kwarg pattern retrieve_and_build_prompt() already uses, kept
+    here so a narrower test double of retrieve_hybrid (no document_id or
+    timing parameter at all, e.g. chat.py's existing tests) keeps working
+    unchanged for the single-part path, which is what almost every question
+    still takes.
+    """
+    kwargs = {"top_k": top_k}
+    if document_id is not None:
+        kwargs["document_id"] = document_id
+    if timing is not None:
+        kwargs["timing"] = timing
+    return retrieve_fn(query, **kwargs)
+
+
+def retrieve_for_question(
+    query: str,
+    history: list[dict] | None = None,
+    top_k: int = config.TOP_K,
+    document_id: str | list[str] | None = None,
+    timing: dict | None = None,
+    retrieve_fn=None,
+) -> list[dict]:
+    """retrieve_hybrid(), decomposition-aware: a question with more than one
+    requested part - "X, and what about Y?", "X? What about Y?", or a bare
+    "what about the first?" resolved against `history` - is retrieved ONE
+    PART AT A TIME instead of as a single blended embedding of the whole
+    question. See intent.decompose_question() for how parts are found and
+    elliptical references resolved.
+
+    Why this exists: a single embedding of a compound question is a blend of
+    both parts' meaning, and nothing guarantees either part's own evidence
+    survives into the fused top-k. "What happened during the second
+    admission? What about the first one?" retrieved chunks skewed toward
+    whichever admission dominated the blended embedding, and the model
+    answered mostly about that one - faithful to the (lopsided) evidence it
+    was given, not a generation defect. Retrieving each part on its own
+    guarantees each one gets its own shot at the index - the same guarantee
+    _allocate_by_document() already gives each selected document for
+    each-document questions, applied along the other axis.
+
+    A single-part question - the overwhelming majority - takes exactly the
+    old path: one retrieve_hybrid() call with the caller's own top_k,
+    document_id and timing, returning results unchanged. `history` never
+    reaches embedding or FTS5 either way - it only ever resolves a part's
+    text before retrieval runs (see decompose_question), never blurs the
+    query itself with conversation transcript.
+
+    For 2+ parts, the per-part budget is `top_k` chunks split evenly across
+    the parts, capped by config.MAX_CONTEXT_CHUNKS - the same ceiling
+    multi-document balanced allocation already answers to, reused here
+    rather than a second magic number, so a question cannot grow its own
+    prompt without bound just by having more parts. Each returned chunk
+    carries `part` (1-indexed) and `part_query` (that part's own resolved
+    question text) in addition to the usual fields, so prompt_builder can
+    group evidence by requested part; chunks are deduplicated by chunk_id
+    (the first part to surface a chunk keeps it) and re-ranked 1..N over the
+    merged, deduplicated list, so citation numbers stay one consistent
+    sequence exactly as they are for any other question.
+
+    `retrieve_fn` defaults to this module's own retrieve_hybrid. A caller
+    that monkeypatches a different reference to it (app.py's and chat.py's
+    tests both patch their own module-level `retrieve_hybrid` name) must
+    pass that same reference explicitly - the patch has no effect on this
+    module's name otherwise.
+    """
+    if retrieve_fn is None:
+        retrieve_fn = retrieve_hybrid
+
+    parts = decompose_question(query, history=history)
+
+    if len(parts) <= 1:
+        resolved_query = parts[0] if parts else query
+        return _call_retrieve(retrieve_fn, resolved_query, top_k, document_id, timing)
+
+    per_part_top_k = max(1, min(top_k, config.MAX_CONTEXT_CHUNKS // len(parts)))
+
+    merged: list[dict] = []
+    seen_chunk_ids: set = set()
+    part_timings: list[dict] = []
+
+    for part_number, part_query in enumerate(parts, start=1):
+        part_timing = {} if timing is not None else None
+        part_chunks = _call_retrieve(retrieve_fn, part_query, per_part_top_k, document_id, part_timing)
+        if part_timing is not None:
+            part_timings.append(part_timing)
+        for chunk in part_chunks:
+            if chunk["chunk_id"] in seen_chunk_ids:
+                continue
+            seen_chunk_ids.add(chunk["chunk_id"])
+            merged.append({**chunk, "part": part_number, "part_query": part_query})
+
+    for rank, chunk in enumerate(merged, start=1):
+        chunk["rank"] = rank
+
+    if timing is not None:
+        for key in ("embedding_ms", "dense_ms", "keyword_ms", "fusion_ms"):
+            timing[key] = sum(t.get(key, 0.0) for t in part_timings)
+
+    return merged
