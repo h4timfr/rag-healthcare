@@ -3,7 +3,7 @@
 import time
 
 from .. import config
-from ..embedding.embedder import embed_query
+from ..embedding.embedder import embed_query, embed_texts
 from ..generation.intent import decompose_question
 from .faiss_index import FaissIndex
 from .keyword_index import KeywordIndex
@@ -78,6 +78,7 @@ def retrieve_hybrid(
     document_id: str | list[str] | None = None,
     timing: dict | None = None,
     balance_by_document: bool = False,
+    query_vector=None,
 ) -> list[dict]:
     """Retrieve using FAISS + FTS5 and fuse rankings with weighted RRF.
 
@@ -104,6 +105,19 @@ def retrieve_hybrid(
     ordinary multi-document questions are completely unaffected) changes only
     which chunks are kept from the END of the fused ranking, for
     each-document and comparison questions. See _allocate_by_document().
+
+    `query_vector` (optional): a precomputed, already-normalized embedding
+    for `query` - e.g. from one batched embed_texts() call across several
+    sub-questions of a single multi-part retrieval (see
+    retrieve_for_question(), the only caller that passes this). When given,
+    embed_query() is never called here, and `timing["embedding_ms"]` is left
+    untouched by this function - the caller already paid that cost once, for
+    the whole batch, and is responsible for reporting it itself. Omitted
+    (the default - every caller except retrieve_for_question's multi-part
+    path), behavior is exactly as before: embed_query(query) runs here and
+    populates timing["embedding_ms"] as it always has. The resulting search
+    is identical either way - FAISS never knows or cares where the vector
+    came from.
     """
     query = query.strip()
 
@@ -135,7 +149,9 @@ def retrieve_hybrid(
 
     # Dense retrieval
     t0 = time.perf_counter()
-    query_vector = embed_query(query)
+    embedded_here = query_vector is None
+    if embedded_here:
+        query_vector = embed_query(query)
     t1 = time.perf_counter()
 
     dense_scores, dense_ids = faiss_index.search(
@@ -227,7 +243,8 @@ def retrieve_hybrid(
     t4 = time.perf_counter()
 
     if timing is not None:
-        timing["embedding_ms"] = (t1 - t0) * 1000
+        if embedded_here:
+            timing["embedding_ms"] = (t1 - t0) * 1000
         timing["dense_ms"] = (t2 - t1) * 1000
         timing["keyword_ms"] = (t3 - t2) * 1000
         timing["fusion_ms"] = (t4 - t3) * 1000
@@ -235,20 +252,23 @@ def retrieve_hybrid(
     return results
 
 
-def _call_retrieve(retrieve_fn, query, top_k, document_id, timing):
-    """retrieve_fn(query, top_k=..., [document_id=...], [timing=...]),
-    omitting document_id/timing whenever they are None - the same
-    conditional-kwarg pattern retrieve_and_build_prompt() already uses, kept
-    here so a narrower test double of retrieve_hybrid (no document_id or
-    timing parameter at all, e.g. chat.py's existing tests) keeps working
-    unchanged for the single-part path, which is what almost every question
-    still takes.
+def _call_retrieve(retrieve_fn, query, top_k, document_id, timing, query_vector=None):
+    """retrieve_fn(query, top_k=..., [document_id=...], [timing=...],
+    [query_vector=...]), omitting document_id/timing/query_vector whenever
+    they are None - the same conditional-kwarg pattern
+    retrieve_and_build_prompt() already uses, kept here so a narrower test
+    double of retrieve_hybrid (no document_id/timing/query_vector parameter
+    at all, e.g. chat.py's existing tests) keeps working unchanged for the
+    single-part path, which is what almost every question still takes and
+    which never passes query_vector at all (see retrieve_for_question).
     """
     kwargs = {"top_k": top_k}
     if document_id is not None:
         kwargs["document_id"] = document_id
     if timing is not None:
         kwargs["timing"] = timing
+    if query_vector is not None:
+        kwargs["query_vector"] = query_vector
     return retrieve_fn(query, **kwargs)
 
 
@@ -314,13 +334,36 @@ def retrieve_for_question(
 
     per_part_top_k = max(1, min(top_k, config.MAX_CONTEXT_CHUNKS // len(parts)))
 
+    # Embed every part in ONE batched model call instead of N separate ones.
+    # sentence-transformers' encode() already batches internally - asking it
+    # for N texts at once pays the per-call overhead (tokenization, model
+    # dispatch) once, not N times, which is what made this path measurably
+    # slower than a single-part retrieval (~9.3s for 2 parts on the
+    # reference machine, embedding alone). The embeddings this returns are
+    # numerically equivalent, element for element and in the SAME ORDER as
+    # `parts`, to calling embed_query() on each part one at a time - see
+    # test_multi_part_retrieval.py's equivalence tests, which assert the
+    # actual FAISS search results this produces are identical to the old
+    # per-part embed_query() behavior, not just that the code runs.
+    #
+    # FTS5 keyword search is deliberately NOT batched here: it already runs
+    # in ~10-20ms per part, and there is no way to combine several distinct
+    # MATCH queries into one FTS5 call without changing what "top-k keyword
+    # matches for THIS part" means - that would touch ranking, which this
+    # change must not do.
+    embed_start = time.perf_counter()
+    part_vectors = embed_texts(parts)
+    batch_embedding_ms = (time.perf_counter() - embed_start) * 1000
+
     merged: list[dict] = []
     seen_chunk_ids: set = set()
     part_timings: list[dict] = []
 
-    for part_number, part_query in enumerate(parts, start=1):
+    for part_number, (part_query, part_vector) in enumerate(zip(parts, part_vectors), start=1):
         part_timing = {} if timing is not None else None
-        part_chunks = _call_retrieve(retrieve_fn, part_query, per_part_top_k, document_id, part_timing)
+        part_chunks = _call_retrieve(
+            retrieve_fn, part_query, per_part_top_k, document_id, part_timing, query_vector=part_vector
+        )
         if part_timing is not None:
             part_timings.append(part_timing)
         for chunk in part_chunks:
@@ -333,7 +376,12 @@ def retrieve_for_question(
         chunk["rank"] = rank
 
     if timing is not None:
-        for key in ("embedding_ms", "dense_ms", "keyword_ms", "fusion_ms"):
+        # embedding_ms is the ONE batch cost above, not a sum over parts -
+        # summing would double- (or N-) count a cost that was only ever
+        # paid once. dense_ms/keyword_ms/fusion_ms genuinely do happen once
+        # per part, so those are still summed exactly as before.
+        timing["embedding_ms"] = batch_embedding_ms
+        for key in ("dense_ms", "keyword_ms", "fusion_ms"):
             timing[key] = sum(t.get(key, 0.0) for t in part_timings)
 
     return merged

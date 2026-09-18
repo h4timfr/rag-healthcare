@@ -10,12 +10,21 @@ tests exercise the real wiring (app.retrieve_and_build_prompt ->
 retrieve_for_question -> app's own, patchable retrieve_hybrid -> build_prompt)
 with a fake retrieve_hybrid, so the fix is proven at the same call site the
 Streamlit UI actually uses, not only in the two modules it's built from.
+
+retrieve_for_question() embeds every part in one batched embed_texts() call
+(see src/retrieval/hybrid_retriever.py) rather than one embed_query() call
+per part; `embed_texts` is faked here (module-level, via `hybrid_retriever`)
+so these tests stay fast and independent of the real ML model - the
+retrieval-result equivalence itself is proven in test_multi_part_retrieval.py
+against a real FAISS index.
 """
 
+import numpy as np
 import pytest
 
 import app
 from src.exceptions import InsufficientRetrievalError
+from src.retrieval import hybrid_retriever
 
 
 def _chunk(chunk_id, document_id, source, page, text, rank=1):
@@ -30,10 +39,21 @@ def _chunk(chunk_id, document_id, source, page, text, rank=1):
     }
 
 
+@pytest.fixture(autouse=True)
+def fake_batched_embeddings(monkeypatch):
+    """No real model: a small deterministic vector per text, distinct
+    enough to assert on correspondence where a test wants to."""
+    monkeypatch.setattr(
+        hybrid_retriever,
+        "embed_texts",
+        lambda texts: np.array([[float(hash(t) % 1000), 0.0] for t in texts], dtype="float32"),
+    )
+
+
 def test_regression_second_admission_then_what_about_the_first_one(monkeypatch):
     calls = []
 
-    def fake_retrieve_hybrid(query, top_k=5, document_id=None, timing=None):
+    def fake_retrieve_hybrid(query, top_k=5, document_id=None, timing=None, query_vector=None):
         calls.append(query)
         if "second" in query.lower():
             return [_chunk(1, "d1", "a.pdf", 3, "Second admission: chest pain, discharged stable.")]
@@ -81,7 +101,7 @@ def test_regression_question_works_with_no_history_too(monkeypatch):
     both parts are self-contained, so history was never required here."""
     calls = []
 
-    def fake_retrieve_hybrid(query, top_k=5, document_id=None, timing=None):
+    def fake_retrieve_hybrid(query, top_k=5, document_id=None, timing=None, query_vector=None):
         calls.append(query)
         return [_chunk(len(calls), "d1", "a.pdf", 1, query)]
 
@@ -97,7 +117,7 @@ def test_regression_question_works_with_no_history_too(monkeypatch):
 
 
 def test_one_part_with_evidence_one_without_reaches_the_prompt_as_such(monkeypatch):
-    def fake_retrieve_hybrid(query, top_k=5, document_id=None, timing=None):
+    def fake_retrieve_hybrid(query, top_k=5, document_id=None, timing=None, query_vector=None):
         if "second" in query.lower():
             return [_chunk(1, "d1", "a.pdf", 3, "Second admission: chest pain.")]
         return []  # nothing found for "first admission"
@@ -118,7 +138,10 @@ def test_one_part_with_evidence_one_without_reaches_the_prompt_as_such(monkeypat
 
 
 def test_both_parts_empty_raises_insufficient_retrieval(monkeypatch):
-    monkeypatch.setattr(app, "retrieve_hybrid", lambda query, top_k=5, document_id=None, timing=None: [])
+    monkeypatch.setattr(
+        app, "retrieve_hybrid",
+        lambda query, top_k=5, document_id=None, timing=None, query_vector=None: [],
+    )
 
     with pytest.raises(InsufficientRetrievalError):
         app.retrieve_and_build_prompt(
@@ -129,7 +152,8 @@ def test_both_parts_empty_raises_insufficient_retrieval(monkeypatch):
 
 def test_ordinary_single_part_question_is_unaffected(monkeypatch):
     """A plain single-document, single-part question must take exactly the
-    old one-call path - proves the fix doesn't touch the common case."""
+    old one-call path - proves the fix doesn't touch the common case, and
+    that the batched-embedding optimization never reaches it either."""
     calls = []
 
     def fake_retrieve_hybrid(query, top_k=5, document_id=None, timing=None):
@@ -145,3 +169,33 @@ def test_ordinary_single_part_question_is_unaffected(monkeypatch):
     assert calls == [("What medication was the patient prescribed?", 5, "d1")]
     assert "part" not in chunks[0]
     assert "This question has" not in prompt
+
+
+def test_multi_part_retrieval_uses_one_batched_embedding_call(monkeypatch):
+    """The actual optimization, proven at the app entry point: one
+    embed_texts() call for the whole multi-part question, not one per part."""
+    embed_calls = []
+    real_embed_texts = hybrid_retriever.embed_texts
+
+    def counting_embed_texts(texts):
+        embed_calls.append(list(texts))
+        return real_embed_texts(texts)
+
+    monkeypatch.setattr(hybrid_retriever, "embed_texts", counting_embed_texts)
+    monkeypatch.setattr(
+        app, "retrieve_hybrid",
+        lambda query, top_k=5, document_id=None, timing=None, query_vector=None: [
+            _chunk(hash(query) % 1000, "d1", "a.pdf", 1, query)
+        ],
+    )
+
+    app.retrieve_and_build_prompt(
+        "What happened during the second admission? What about the first one?",
+        document_id="d1",
+    )
+
+    assert len(embed_calls) == 1
+    assert embed_calls[0] == [
+        "What happened during the second admission?",
+        "What happened during the first admission?",
+    ]
