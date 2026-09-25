@@ -4,7 +4,10 @@ __pycache__/
 venv/
 .pytest_cache/
 .pytest_tmp/
-.streamlit/
+# Keep secrets.toml and any local overrides out; config.toml carries the
+# localhost-only binding and is part of the app.
+.streamlit/*
+!.streamlit/config.toml
 
 # Generated/runtime data - not source
 data/raw_pdfs/*

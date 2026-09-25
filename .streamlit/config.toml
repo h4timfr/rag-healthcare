@@ -1,0 +1,10 @@
+# The app has no authentication and serves private uploaded documents, so it
+# listens on this machine only. Streamlit's default binds every network
+# interface. To deliberately serve it elsewhere, pass --server.address.
+[server]
+address = "localhost"
+
+[browser]
+serverAddress = "localhost"
+# No usage telemetry from a tool meant to run entirely locally.
+gatherUsageStats = false
