@@ -264,6 +264,28 @@ def is_enumeration_question(query: str) -> bool:
     return bool(_ENUMERATION_RANKING.search(q))
 
 
+# First-person requests for advice about the user's own (or a dependent's)
+# health: "should I ...", "for me/my ...", "my child ...", "I take ...".
+# Document questions are phrased about the patients in the documents, so
+# this is deliberately narrow; checked against all 68 product-QA and
+# benchmark questions with no matches.
+_PERSONAL_ADVICE = re.compile(
+    r"\b(should|can|could|may|must|do|shall) (i|we)\b"
+    r"|\b(my|our) (child|son|daughter|baby|kid|kids|children|mother|mom|father|dad|"
+    r"wife|husband|partner|parent|parents|family|own)\b"
+    r"|\bfor (me|my|us|our)\b"
+    r"|\bi (have|take|am taking|was prescribed|need|feel)\b"
+    r"|\bi'm (taking|pregnant|on)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def is_personal_advice_request(query: str) -> bool:
+    """Whether the question asks about the user's own health, rather than
+    about what the documents report."""
+    return bool(_PERSONAL_ADVICE.search(query or ""))
+
+
 # ---------------------------------------------------------------------------
 # Decomposition for follow-up-shaped multi-part questions.
 #

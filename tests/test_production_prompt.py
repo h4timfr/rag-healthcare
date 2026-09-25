@@ -213,6 +213,53 @@ def test_F_multi_component_style_hardcodes_no_cdc_facts_or_forced_headings():
         assert term not in style
 
 
+# --- personal medical advice -----------------------------------------------------
+#
+# Measured before this rule sat next to the question: "Should I stop taking
+# warfarin?" -> "No, ..." and "My child has a cough like this patient. What
+# medicine should I give her?" -> "Albuterol." The same rule only at the top
+# of the prompt was not followed.
+
+
+def test_personal_advice_reminder_sits_right_before_the_question():
+    from src.generation.prompt_builder import PERSONAL_ADVICE_REMINDER
+
+    prompt = _production("Should I stop taking warfarin?")
+    assert PERSONAL_ADVICE_REMINDER in prompt
+    assert prompt.index("ANSWER STYLE") < prompt.index(PERSONAL_ADVICE_REMINDER) < prompt.index("USER QUESTION:")
+
+
+def test_personal_advice_reminder_is_in_multi_document_prompts_too():
+    from src.generation.prompt_builder import PERSONAL_ADVICE_REMINDER
+
+    prompt = build_prompt("Should I take this medication?", CHUNKS, document_inventory=INVENTORY_2)
+    assert prompt.index(PERSONAL_ADVICE_REMINDER) < prompt.index("USER QUESTION:")
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["Compare the selected documents.", "What medications was the patient discharged on?",
+     "Summarize this document."],
+)
+def test_ordinary_questions_do_not_get_the_advice_reminder(query):
+    """Unconditional, it was over-applied: "Compare the selected documents."
+    came back prefixed with "These documents cannot advise you ..."."""
+    from src.generation.prompt_builder import PERSONAL_ADVICE_REMINDER
+
+    assert PERSONAL_ADVICE_REMINDER not in _production(query)
+    assert PERSONAL_ADVICE_REMINDER not in build_prompt(query, CHUNKS, document_inventory=INVENTORY_2)
+
+
+def test_personal_advice_reminder_does_not_leak_into_eval_or_legacy_prompts():
+    """The neutral evaluation prompt and the legacy benchmark prompt stay
+    byte-for-byte comparable with earlier benchmark runs."""
+    from src.generation.eval_prompt_builder import build_eval_prompt
+    from src.generation.prompt_builder import PERSONAL_ADVICE_REMINDER
+
+    assert PERSONAL_ADVICE_REMINDER not in build_eval_prompt("q", CHUNKS)
+    assert PERSONAL_ADVICE_REMINDER not in build_prompt("q", CHUNKS)
+
+
 def test_exactly_one_answer_style_block_per_prompt():
     """Prompt bloat is a real cost on a 3B model - the styles are mutually
     exclusive, never stacked."""

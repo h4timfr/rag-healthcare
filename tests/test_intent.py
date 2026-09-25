@@ -265,6 +265,35 @@ def test_requests_multiple_components_is_true_for_multi_component_questions(quer
     assert intent_module.requests_multiple_components(query) is True
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Should I take sedatives for my anxiety, and what dose?",
+        "Is it safe for me to take vitamins every day?",
+        "Should I stop taking warfarin?",
+        "What treatment would you recommend for my high blood pressure?",
+        "My child has a cough like this patient. What medicine should I give her?",
+        "I take metformin - can I also take ibuprofen?",
+    ],
+)
+def test_personal_advice_requests_are_detected(query):
+    assert intent_module.is_personal_advice_request(query) is True
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What medications was the patient discharged on?",
+        "Should the patient have been given antibiotics?",
+        "What treatment did the doctor recommend?",
+        "Compare the selected documents.",
+        "What were the most frequent treatment categories?",
+    ],
+)
+def test_questions_about_the_documents_are_not_personal_advice(query):
+    assert intent_module.is_personal_advice_request(query) is False
+
+
 def test_multi_part_beats_numeric():
     query = "How many studies are cited, and what database was used?"
     assert classify_intent(query) == MULTI_PART

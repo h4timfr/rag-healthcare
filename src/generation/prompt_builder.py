@@ -88,6 +88,32 @@ Citations:
 - Cite only evidence that actually supports the claim.
 """
 
+# Placed right before the question, where this model actually follows
+# instructions (see _ANSWER_STYLE_PLACEMENT), and only for first-person advice
+# requests. With just the general "no treatment directive" rule at the top,
+# "Should I stop taking warfarin?" was answered "No, ..." and "My child has a
+# cough like this patient. What medicine should I give her?" was answered
+# "Albuterol." - directives lifted from someone else's chart. Rewording the
+# top-of-prompt rule instead was measured to change unrelated answers
+# (a summary question lost required facts in 4 of 5 runs), so every
+# non-advice prompt is left exactly as it was.
+PERSONAL_ADVICE_REMINDER = (
+    "- If the question asks what the user (or someone they care for) should "
+    "take, stop, dose, or do about their own health, do not answer yes or no "
+    "and do not name a treatment for them. Start by saying these documents "
+    "cannot advise them and they should ask a doctor or pharmacist."
+)
+
+
+def _personal_advice_reminder(query: str) -> str:
+    """The reminder, only for first-person advice requests. Added to every
+    prompt it was over-applied: "Compare the selected documents." was
+    answered with "These documents cannot advise you ..." Every other
+    question's prompt is unchanged by it."""
+    if intent_module.is_personal_advice_request(query):
+        return f"\n{PERSONAL_ADVICE_REMINDER}"
+    return ""
+
 ANSWER_STYLES = {
     intent_module.FACTUAL: (
         "ANSWER STYLE\n"
@@ -758,7 +784,7 @@ def build_production_prompt(
         f"{PRODUCTION_SYSTEM_INSTRUCTION}\n"
         f"EVIDENCE:\n{context}"
         f"{history_section}\n\n"
-        f"{answer_style}\n\n"
+        f"{answer_style}{_personal_advice_reminder(query)}\n\n"
         f"USER QUESTION:\n{query}\n\n"
         f"ANSWER:"
     )
@@ -966,7 +992,7 @@ def build_multi_document_prompt(
         f"{rules}\n\n"
         f"EVIDENCE:\n{context}"
         f"{history_section}\n\n"
-        f"{answer_style}\n\n"
+        f"{answer_style}{_personal_advice_reminder(query)}\n\n"
         f"USER QUESTION:\n{query}\n\n"
         f"ANSWER:"
     )
