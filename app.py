@@ -44,7 +44,7 @@ from src.generation.ollama_client import (
 )
 from src.generation.prompt_builder import build_prompt, order_chunks_for_presentation
 from src.retrieval.document_reference import resolve_document_reference
-from src.retrieval.faiss_index import FaissIndex
+from src.retrieval.faiss_index import INDEX_WRITE_LOCK, FaissIndex
 from src.retrieval.hybrid_retriever import retrieve_for_question, retrieve_hybrid
 from src.retrieval.metadata_store import MetadataStore
 
@@ -172,16 +172,20 @@ def delete_document(document_id: str) -> dict:
     those are never served: hybrid_retriever already skips any chunk_id that
     has no matching SQLite row (see MetadataStore.get_chunks usage there).
 
+    Held under INDEX_WRITE_LOCK so a concurrent upload's load..save cannot
+    interleave with this one and have either overwrite the other's index.
+
     Returns {"removed_chunks": int}.
     """
     store = MetadataStore(config.DB_PATH)
-    chunk_ids = store.delete_document(document_id)
+    with INDEX_WRITE_LOCK:
+        chunk_ids = store.delete_document(document_id)
 
-    if chunk_ids:
-        faiss_index = FaissIndex(config.EMBEDDING_DIM, config.FAISS_INDEX_PATH)
-        faiss_index.load()
-        faiss_index.remove_ids(chunk_ids)
-        faiss_index.save()
+        if chunk_ids:
+            faiss_index = FaissIndex(config.EMBEDDING_DIM, config.FAISS_INDEX_PATH)
+            faiss_index.load()
+            faiss_index.remove_ids(chunk_ids)
+            faiss_index.save()
 
     return {"removed_chunks": len(chunk_ids)}
 

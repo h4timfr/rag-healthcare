@@ -16,7 +16,7 @@ from src.exceptions import RagError
 from src.ingestion.chunker import chunk_pages
 from src.ingestion.cleaner import clean_text
 from src.ingestion.pdf_extractor import degraded_pages, extract_pages, repaired_pages
-from src.retrieval.faiss_index import FaissIndex
+from src.retrieval.faiss_index import INDEX_WRITE_LOCK, FaissIndex
 from src.retrieval.metadata_store import MetadataStore
 
 
@@ -67,34 +67,49 @@ def ingest_pdf(pdf_path: str, db_path: str | None = None, faiss_index_path: str 
     if not chunks:
         raise RagError(f"No chunks produced from '{pdf_path}' after cleaning/chunking")
 
-    index = FaissIndex(config.EMBEDDING_DIM, faiss_index_path)
-    index.load_or_create()
-
+    # Embedding is the slow part and touches no shared state, so it runs
+    # outside the write lock - concurrent uploads still embed in parallel.
     embeddings = embed_texts([c.text for c in chunks])
 
-    # All of this document's chunks are inserted in one SQLite transaction
-    # (see MetadataStore.insert_chunks): if anything fails partway through,
-    # none of them are committed, so a retry never sees a partial document
-    # and skip re-ingestion because of it.
-    chunk_ids = store.insert_chunks(
-        document_id=document_id,
-        source=Path(pdf_path).name,
-        chunks=[(chunk.page, chunk.text) for chunk in chunks],
-    )
+    with INDEX_WRITE_LOCK:
+        # Re-checked under the lock: two uploads of the same file at once both
+        # pass the check above, and without this both would insert.
+        existing = store.document_chunk_count(document_id)
+        if existing > 0:
+            print(
+                f"Skipped '{pdf_path}': already indexed as document_id={document_id} "
+                f"({existing} chunks)"
+            )
+            return {"document_id": document_id, "chunk_count": existing, "skipped": True}
 
-    # The SQLite rows are committed at this point but the vectors are not
-    # written yet, so a failure here would leave the document half-indexed:
-    # listed in the library, searchable by keyword, invisible to dense
-    # retrieval - and permanently un-repairable, because the dedup check
-    # above sees chunk_count > 0 and SKIPS every future re-upload of the
-    # same file. Undoing the rows restores the pre-ingestion state, so the
-    # user can simply upload it again.
-    try:
-        index.add(embeddings, np.array(chunk_ids, dtype="int64"))
-        index.save()
-    except Exception:
-        store.delete_document(document_id)
-        raise
+        # Loaded under the lock so it includes every vector a writer that
+        # finished just before this one saved.
+        index = FaissIndex(config.EMBEDDING_DIM, faiss_index_path)
+        index.load_or_create()
+
+        # All of this document's chunks are inserted in one SQLite transaction
+        # (see MetadataStore.insert_chunks): if anything fails partway through,
+        # none of them are committed, so a retry never sees a partial document
+        # and skip re-ingestion because of it.
+        chunk_ids = store.insert_chunks(
+            document_id=document_id,
+            source=Path(pdf_path).name,
+            chunks=[(chunk.page, chunk.text) for chunk in chunks],
+        )
+
+        # The SQLite rows are committed at this point but the vectors are not
+        # written yet, so a failure here would leave the document half-indexed:
+        # listed in the library, searchable by keyword, invisible to dense
+        # retrieval - and permanently un-repairable, because the dedup check
+        # above sees chunk_count > 0 and SKIPS every future re-upload of the
+        # same file. Undoing the rows restores the pre-ingestion state, so the
+        # user can simply upload it again.
+        try:
+            index.add(embeddings, np.array(chunk_ids, dtype="int64"))
+            index.save()
+        except Exception:
+            store.delete_document(document_id)
+            raise
 
     print(f"Ingested '{pdf_path}': {len(chunks)} chunks (document_id={document_id})")
     if fixed_pages:

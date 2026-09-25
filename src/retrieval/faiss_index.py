@@ -8,11 +8,24 @@ noticeable cold-start latency to every `streamlit run`, even before any
 document was uploaded or queried.
 """
 
+import os
+import threading
 from pathlib import Path
 
 import numpy as np
 
 from ..exceptions import IndexNotFoundError
+
+# Every write to an index file is load -> mutate -> save of the WHOLE file, so
+# two writers overlapping in time lose an update: both load the same old
+# state, and whichever saves last silently drops the other's vectors. Streamlit
+# runs each browser session as a thread of one process, so two concurrent
+# uploads were measured doing exactly that - both reported success, one
+# document's chunks ended up in SQLite with no FAISS vectors. Writers hold this
+# lock across their whole load..save section. It is process-wide only: a
+# separate process (the ingest CLI) writing the same file concurrently is not
+# covered.
+INDEX_WRITE_LOCK = threading.RLock()
 
 
 class FaissIndex:
@@ -52,8 +65,17 @@ class FaissIndex:
 
         if self.index is None:
             raise RuntimeError("No index to save. Call load_or_create() first.")
-        Path(self.index_path).parent.mkdir(parents=True, exist_ok=True)
-        faiss.write_index(self.index, self.index_path)
+        target = Path(self.index_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # Write beside the target, then atomically swap it in: a crash mid-write
+        # or a query reading the file concurrently can never see a half-written
+        # index, which would make every later load fail.
+        tmp = target.with_name(f"{target.name}.tmp-{os.getpid()}-{threading.get_ident()}")
+        try:
+            faiss.write_index(self.index, str(tmp))
+            os.replace(tmp, target)
+        finally:
+            tmp.unlink(missing_ok=True)
 
     def search(self, query_vector: np.ndarray, top_k: int) -> tuple[np.ndarray, np.ndarray]:
         """Return (scores, chunk_ids) arrays of length <= top_k. chunk_id == -1 means no match."""
