@@ -24,10 +24,19 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE INDEX IF NOT EXISTS idx_chunks_document_id
 ON chunks(document_id);
 
+-- porter unicode61: adds Porter stemming on top of FTS5's default unicode61
+-- tokenizer, so a query for "categories"/"examinations"/"tests" matches text
+-- that only contains the singular "category"/"examination"/"test" (and vice
+-- versa). Without it, FTS5 does exact-token matching only - confirmed via
+-- retrieval audit as a real cause of missed keyword matches (e.g. a table
+-- headed "Diagnostic category" never matched a query asking about
+-- "diagnostic categories"). Unicode61 alone (no stemming) is unchanged for
+-- every other tokenizing behavior - this only adds stemming on top of it.
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts
 USING fts5(
     chunk_id UNINDEXED,
-    text
+    text,
+    tokenize='porter unicode61'
 );
 """
 
@@ -44,6 +53,34 @@ class MetadataStore:
             conn.executescript(SCHEMA)
 
             conn.execute("DELETE FROM chunks_fts")
+
+            conn.execute(
+                """
+                INSERT INTO chunks_fts (chunk_id, text)
+                SELECT chunk_id, text
+                FROM chunks
+                """
+            )
+
+    def rebuild_fts_index(self) -> None:
+        """Drop and recreate chunks_fts from the current SCHEMA definition,
+        then repopulate it from the chunks table - the chunks table itself
+        and the FAISS index are never touched, so this can only change how
+        existing chunks are keyword-searched, never what has been ingested.
+
+        initialize()'s `CREATE VIRTUAL TABLE IF NOT EXISTS` is safe to rerun
+        against an already-initialized database without losing data, but for
+        exactly that reason it will NOT pick up a change to chunks_fts's own
+        definition (e.g. its tokenizer) on a database where that table
+        already exists - IF NOT EXISTS just leaves the old one in place.
+        This method exists for that case: call it once after changing
+        SCHEMA's chunks_fts definition, against a database that was created
+        under the old definition, to bring it in line without re-ingesting
+        anything.
+        """
+        with self._connection(create=True) as conn:
+            conn.execute("DROP TABLE IF EXISTS chunks_fts")
+            conn.executescript(SCHEMA)
 
             conn.execute(
                 """

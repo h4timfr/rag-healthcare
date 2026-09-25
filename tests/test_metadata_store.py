@@ -107,6 +107,162 @@ def test_delete_document_removes_fts_rows(tmp_path):
     assert keyword_index.search("unique_keyword_term") == []
 
 
+# --- FTS5 Porter stemming ----------------------------------------------------
+#
+# Retrieval audit finding: a query for "diagnostic categories" (plural) never
+# matched a chunk whose text only said "diagnostic category" (singular,
+# taken verbatim from a real table header) - FTS5's default tokenizer does
+# exact-token matching only. porter unicode61 (see SCHEMA) fixes this by
+# stemming both the indexed text and the query to a common root.
+
+
+@pytest.mark.parametrize(
+    "indexed_text,query_word",
+    [
+        ("Diagnostic category", "categories"),
+        ("laboratory test", "tests"),
+        ("vaginal examination", "examinations"),
+    ],
+)
+def test_plural_query_matches_singular_indexed_text(tmp_path, indexed_text, query_word):
+    from src.retrieval.keyword_index import KeywordIndex
+
+    db_path = str(tmp_path / "metadata.db")
+    store = MetadataStore(db_path)
+    store.initialize()
+    chunk_id = store.insert_chunk(document_id="docA", source="a.pdf", page=1, text=indexed_text)
+
+    keyword_index = KeywordIndex(db_path)
+    results = keyword_index.search(query_word)
+
+    assert {r["chunk_id"] for r in results} == {chunk_id}
+
+
+@pytest.mark.parametrize(
+    "indexed_text,query_word",
+    [
+        ("diagnostic categories", "category"),
+        ("laboratory tests", "test"),
+        ("vaginal examinations", "examination"),
+    ],
+)
+def test_singular_query_matches_plural_indexed_text(tmp_path, indexed_text, query_word):
+    from src.retrieval.keyword_index import KeywordIndex
+
+    db_path = str(tmp_path / "metadata.db")
+    store = MetadataStore(db_path)
+    store.initialize()
+    chunk_id = store.insert_chunk(document_id="docA", source="a.pdf", page=1, text=indexed_text)
+
+    keyword_index = KeywordIndex(db_path)
+    results = keyword_index.search(query_word)
+
+    assert {r["chunk_id"] for r in results} == {chunk_id}
+
+
+def test_stemming_does_not_cause_false_positive_matches(tmp_path):
+    """Stemming must not turn the index into a fuzzy/substring matcher -
+    only words that actually share a stem should match."""
+    from src.retrieval.keyword_index import KeywordIndex
+
+    db_path = str(tmp_path / "metadata.db")
+    store = MetadataStore(db_path)
+    store.initialize()
+    store.insert_chunk(document_id="docA", source="a.pdf", page=1, text="cardiovascular disease")
+
+    keyword_index = KeywordIndex(db_path)
+    assert keyword_index.search("categories") == []
+
+
+# --- rebuild_fts_index --------------------------------------------------------
+
+
+def test_rebuild_fts_index_picks_up_a_changed_tokenizer_definition(tmp_path):
+    """The scenario rebuild_fts_index() exists for: a database whose
+    chunks_fts was created under an OLD definition (here, simulated by
+    building it without the porter tokenizer directly, bypassing SCHEMA)
+    does not gain stemming just from calling initialize() again - only
+    rebuild_fts_index() (unconditional DROP, then recreate from the CURRENT
+    SCHEMA) picks up the change."""
+    import sqlite3
+
+    from src.retrieval.keyword_index import KeywordIndex
+
+    db_path = str(tmp_path / "metadata.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE chunks (
+            chunk_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            page INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE VIRTUAL TABLE chunks_fts USING fts5(chunk_id UNINDEXED, text);
+        """
+    )
+    conn.execute(
+        "INSERT INTO chunks (chunk_id, document_id, source, page, text, created_at) "
+        "VALUES (1, 'docA', 'a.pdf', 1, 'diagnostic category', 'now')"
+    )
+    conn.execute("INSERT INTO chunks_fts (chunk_id, text) VALUES (1, 'diagnostic category')")
+    conn.commit()
+    conn.close()
+
+    store = MetadataStore(db_path)
+    keyword_index = KeywordIndex(db_path)
+
+    # Old (non-stemming) table: plural query does not match the singular text.
+    assert keyword_index.search("categories") == []
+
+    # initialize() is IF-NOT-EXISTS - it must NOT silently fix this.
+    store.initialize()
+    assert keyword_index.search("categories") == []
+
+    # rebuild_fts_index() unconditionally drops and recreates from SCHEMA.
+    store.rebuild_fts_index()
+    assert {r["chunk_id"] for r in keyword_index.search("categories")} == {1}
+
+
+def test_rebuild_fts_index_preserves_the_chunks_table(tmp_path):
+    """rebuild_fts_index() only ever touches chunks_fts - the chunks table
+    (and, by extension, everything FAISS/document metadata depend on) is
+    read from, never written to."""
+    store = MetadataStore(str(tmp_path / "metadata.db"))
+    store.initialize()
+    store.insert_chunk(document_id="docA", source="a.pdf", page=1, text="alpha")
+    store.insert_chunk(document_id="docA", source="a.pdf", page=2, text="beta")
+
+    before = store.list_documents()
+    store.rebuild_fts_index()
+    after = store.list_documents()
+
+    assert before == after
+    assert store.count() == 2
+
+
+def test_rebuild_fts_index_reindexes_every_existing_chunk(tmp_path):
+    """Every chunk already in the chunks table must be searchable again
+    after a rebuild - not just chunks inserted after it."""
+    from src.retrieval.keyword_index import KeywordIndex
+
+    db_path = str(tmp_path / "metadata.db")
+    store = MetadataStore(db_path)
+    store.initialize()
+    ids = [
+        store.insert_chunk(document_id="docA", source="a.pdf", page=i, text=f"unique_term_{i}")
+        for i in range(5)
+    ]
+
+    store.rebuild_fts_index()
+
+    keyword_index = KeywordIndex(db_path)
+    for i, chunk_id in enumerate(ids):
+        assert {r["chunk_id"] for r in keyword_index.search(f"unique_term_{i}")} == {chunk_id}
+
+
 def test_delete_document_unknown_id_is_a_noop(tmp_path):
     store = MetadataStore(str(tmp_path / "metadata.db"))
     store.initialize()
