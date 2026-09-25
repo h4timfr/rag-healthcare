@@ -82,7 +82,12 @@ def ingest_uploaded_pdf(filename: str, file_bytes: bytes) -> dict:
             # Ingestion errors name the file by its temporary path, which is
             # an internal detail the user never chose and cannot act on.
             # Re-raise the same error type with the name they uploaded.
-            raise type(e)(str(e).replace(str(tmp_path), safe_name)) from e
+            # PyMuPDF's own messages quote the path in escaped form
+            # (backslashes doubled), so both spellings are replaced.
+            message = str(e)
+            for spelling in (str(tmp_path).replace("\\", "\\\\"), str(tmp_path)):
+                message = message.replace(spelling, safe_name)
+            raise type(e)(message) from e
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 

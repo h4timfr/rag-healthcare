@@ -5,6 +5,7 @@ Importing app.py must not launch the page - main() is only invoked under
 only defines the helper functions exercised below.
 """
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -144,6 +145,21 @@ def test_answer_question_raises_on_no_hybrid_results(monkeypatch):
 
 
 # --- group_sources -------------------------------------------------------
+
+
+@pytest.mark.parametrize("data", [b"", b"%PDF-1.4 not really a pdf"])
+def test_unopenable_upload_error_names_the_upload_not_the_temp_path(tmp_path, monkeypatch, data):
+    """PyMuPDF quotes the file path in escaped form (doubled backslashes);
+    the user must see the name they uploaded, never the temp directory."""
+    monkeypatch.setattr(app.config, "DB_PATH", str(tmp_path / "metadata.db"))
+    monkeypatch.setattr(app.config, "FAISS_INDEX_PATH", str(tmp_path / "faiss.index"))
+
+    result = app.ingest_uploaded_pdfs([("report.pdf", data)])[0]
+
+    assert result["status"] == "failed"
+    assert "report.pdf" in result["error"]
+    assert "rag_upload_" not in result["error"]
+    assert tempfile.gettempdir().lower() not in result["error"].lower().replace("\\\\", "\\")
 
 
 def test_completion_status_for_a_complete_answer_is_a_quiet_caption():
