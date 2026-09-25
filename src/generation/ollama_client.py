@@ -136,8 +136,9 @@ def generate_stream(prompt: str, result: dict | None = None, num_predict: int | 
     `st.write_stream()` can render tokens incrementally. If `result` is
     given, it's populated in place once the stream completes with
     `result["answer"]` (the full concatenated text, identical to what
-    generate() would have returned for the same prompt) and
-    `result["timing"]` (see _extract_timing) - mirrors retrieve_hybrid's
+    generate() would have returned for the same prompt),
+    `result["timing"]` (see _extract_timing), and `result["truncated"]`
+    (True when num_predict cut the answer off) - mirrors retrieve_hybrid's
     `timing` out-param pattern used elsewhere in this codebase.
 
     `num_predict` overrides config.OLLAMA_NUM_PREDICT for this request (see
@@ -179,6 +180,10 @@ def generate_stream(prompt: str, result: dict | None = None, num_predict: int | 
     if result is not None:
         result["answer"] = full_answer
         result["timing"] = _extract_timing(final_data)
+        # Ollama reports done_reason "length" when num_predict cut the answer
+        # off and "stop" when the model finished; a truncated answer ends
+        # mid-sentence and would otherwise be shown as if it were complete.
+        result["truncated"] = final_data.get("done_reason") == "length"
 
 
 def warm_up() -> None:

@@ -83,6 +83,28 @@ def test_generate_stream_populates_result_with_answer_and_timing(monkeypatch):
     assert result["timing"]["completion_tokens"] == 7
 
 
+@pytest.mark.parametrize(
+    "done_fields, truncated",
+    [
+        ({"done_reason": "length"}, True),   # num_predict cut the answer off
+        ({"done_reason": "stop"}, False),    # model finished on its own
+        ({}, False),                         # older servers omit done_reason
+    ],
+)
+def test_generate_stream_reports_whether_the_answer_was_cut_off(monkeypatch, done_fields, truncated):
+    """A length-capped answer ends mid-sentence; the caller must be able to
+    tell it apart from a complete one rather than presenting it as whole."""
+    monkeypatch.setattr(
+        ollama_client.requests, "post",
+        lambda *a, **k: FakeStreamResponse(_ok_lines(["The values were 30.5 and"], **done_fields)),
+    )
+
+    result: dict = {}
+    list(ollama_client.generate_stream("a prompt", result=result))
+
+    assert result["truncated"] is truncated
+
+
 def test_generate_stream_without_result_param_still_works(monkeypatch):
     """result is optional - omitting it must not error."""
     monkeypatch.setattr(
