@@ -146,6 +146,17 @@ def test_answer_question_raises_on_no_hybrid_results(monkeypatch):
 # --- group_sources -------------------------------------------------------
 
 
+def test_completion_status_for_a_complete_answer_is_a_quiet_caption():
+    assert app.completion_status(1500, truncated=False) == ("caption", "Complete · 1.5s")
+
+
+def test_completion_status_for_a_cut_off_answer_warns_instead_of_saying_complete():
+    kind, text = app.completion_status(1500, truncated=True)
+    assert kind == "warning"
+    assert "cut off" in text
+    assert "Complete" not in text
+
+
 def test_group_sources_dedupes_repeated_source_page_pairs():
     sources = [
         {"source": "file.pdf", "page": 1, "score": 0.1},

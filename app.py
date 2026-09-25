@@ -19,6 +19,7 @@ import streamlit as st
 
 from scripts import ingest as ingest_module
 from src import config
+from src.embedding.embedder import warm_up as warm_up_embedder
 from src.exceptions import (
     DatabaseNotFoundError,
     EmptyQueryError,
@@ -188,6 +189,27 @@ def delete_document(document_id: str) -> dict:
             faiss_index.save()
 
     return {"removed_chunks": len(chunk_ids)}
+
+
+def completion_status(total_ms: float, truncated: bool) -> tuple[str, str]:
+    """("caption" | "warning", text) shown under a finished answer.
+
+    A truncated answer (generation hit num_predict) ends mid-sentence; saying
+    "Complete" under it would present a partial answer as a whole one.
+    """
+    seconds = f"{total_ms / 1000:.1f}s"
+    if truncated:
+        return (
+            "warning",
+            f"This answer reached the length limit and was cut off ({seconds}). "
+            "It may be incomplete - a narrower question is more likely to get a complete answer.",
+        )
+    return "caption", f"Complete · {seconds}"
+
+
+def render_completion_status(total_ms: float, truncated: bool) -> None:
+    kind, text = completion_status(total_ms, truncated)
+    (st.warning if kind == "warning" else st.caption)(text)
 
 
 def group_sources(sources: list[dict]) -> list[dict]:
@@ -867,7 +889,11 @@ def render_document_library(documents: list[dict], active_id: str | None) -> Non
             unsafe_allow_html=True,
         )
 
-        col_scope, col_remove = st.columns([3, 1])
+        # [9, 5], not [3, 1]: at the default 300px sidebar the row has 243px of
+        # column space; "Remove" needs ~81px and "Use this document" ~151px
+        # (text + button padding, measured). [3, 1] gave Remove 61px and
+        # clipped the destructive button's label to "Re...".
+        col_scope, col_remove = st.columns([9, 5])
         with col_scope:
             if scope == "active":
                 st.button(
@@ -1225,11 +1251,10 @@ def render_chat(
             st.write(turn["content"])
             turn_timing = turn.get("timing") or {}
             if turn["role"] == "assistant" and turn_timing.get("total_ms") is not None:
-                # Mirrors the live "Complete · X.Xs" caption shown right after
-                # this turn finished generating, so it stays visible after a
-                # later turn causes a rerun - not just for the instant it
-                # first appeared.
-                st.caption(f"Complete · {turn_timing['total_ms'] / 1000:.1f}s")
+                # Mirrors the live status shown right after this turn finished
+                # generating, so it stays visible after a later turn causes a
+                # rerun - not just for the instant it first appeared.
+                render_completion_status(turn_timing["total_ms"], turn.get("truncated", False))
             if turn["role"] == "assistant" and turn.get("sources"):
                 render_sources(turn["sources"])
             if turn["role"] == "assistant" and turn.get("chunks"):
@@ -1325,10 +1350,11 @@ def render_chat(
         # equivalent fallback if generation completed but somehow didn't
         # populate the out-param.
         answer = gen_result.get("answer", answer)
+        truncated = gen_result.get("truncated", False)
         timing["generation"] = gen_result.get("timing", {})
         timing["total_ms"] = (time.perf_counter() - turn_start) * 1000
 
-        st.caption(f"Complete · {timing['total_ms'] / 1000:.1f}s")
+        render_completion_status(timing["total_ms"], truncated)
 
         sources = [{"source": c["source"], "page": c["page"], "score": c["score"]} for c in chunks]
         render_sources(sources)
@@ -1342,6 +1368,7 @@ def render_chat(
             "sources": sources,
             "chunks": chunks,
             "timing": timing,
+            "truncated": truncated,
         }
     )
 
@@ -1377,6 +1404,9 @@ def main() -> None:
     # change keep_alive, so an idle model still unloads as configured.
     if active_id and not st.session_state.get("model_warmed"):
         warm_up_ollama()
+        # The embedding model too: its torch import (~16s cold) otherwise
+        # lands inside the first query's "Retrieving evidence" step.
+        warm_up_embedder()
         st.session_state["model_warmed"] = True
 
     with st.sidebar:
