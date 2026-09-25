@@ -55,7 +55,12 @@ BALANCED_CHUNKS_PER_DOCUMENT = 3
 MAX_CONTEXT_CHUNKS = 10
 
 # --- Ollama generation ---
-OLLAMA_HOST = "http://localhost:11434"
+# 127.0.0.1, not "localhost": Ollama listens on IPv4 127.0.0.1 by default,
+# while Windows resolves "localhost" to IPv6 ::1 first. Each request then
+# waits for the IPv6 attempt to fail before falling back - measured at
+# ~2000 ms per request versus ~30 ms direct, twice per answer (availability
+# check + generation) and once per page render (sidebar status).
+OLLAMA_HOST = "http://127.0.0.1:11434"
 OLLAMA_MODEL = "llama3.2:3b"
 
 OLLAMA_TEMPERATURE = 0.1
