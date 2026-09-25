@@ -103,7 +103,7 @@ def test_answer_question_calls_hybrid_retrieval_and_returns_chunks(monkeypatch):
         ]
 
     monkeypatch.setattr(app, "retrieve_hybrid", fake_retrieve_hybrid)
-    monkeypatch.setattr(app, "generate", lambda prompt: "a generated answer")
+    monkeypatch.setattr(app, "generate", lambda prompt, num_predict=None: "a generated answer")
 
     result = app.answer_question("what is X?", top_k=3)
 
@@ -124,7 +124,7 @@ def test_answer_question_passes_document_id_through_to_hybrid_retrieval(monkeypa
         ]
 
     monkeypatch.setattr(app, "retrieve_hybrid", fake_retrieve_hybrid)
-    monkeypatch.setattr(app, "generate", lambda prompt: "answer")
+    monkeypatch.setattr(app, "generate", lambda prompt, num_predict=None: "answer")
 
     app.answer_question("what is X?", document_id="docA")
 

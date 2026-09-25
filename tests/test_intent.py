@@ -193,6 +193,78 @@ def test_each_document_beats_summary():
     assert classify_intent("Summarize each selected document separately.") == EACH_DOCUMENT
 
 
+# --- each/every: document-scoped, not bare -------------------------------------
+#
+# Regression for a real bug: bare "\beach\b"/"\bevery\b" matched ordinary
+# content-level questions too ("each diagnostic category", "each treatment
+# category"), where "each"/"every" refers to something INSIDE the document,
+# not to separate documents. That misclassified them as EACH_DOCUMENT, which
+# activates the per-document ANSWER STYLE unconditionally (build_answer_style()
+# reads the label straight off classify_intent(), not gated on
+# document_inventory) - on a single-document question with no document list
+# to draw section names from, the model fabricated headings like
+# "Pediatric Report.pdf:". The fix requires a document noun immediately
+# after "each"/"every".
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What were the findings for each diagnostic category?",
+        "What were the percentages for each treatment category?",
+        "What was recorded for every diagnosis category?",
+    ],
+)
+def test_content_level_each_every_is_not_each_document(query):
+    assert classify_intent(query) != EACH_DOCUMENT
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Summarize each selected document separately.",
+        "What is the main purpose of each document?",
+        "What is the main purpose of every document?",
+        "Summarize each document.",
+    ],
+)
+def test_document_level_each_every_is_still_each_document(query):
+    assert classify_intent(query) == EACH_DOCUMENT
+
+
+# --- requests_multiple_components (Task 6) -------------------------------
+#
+# A narrower, purely lexical signal from a single FACTUAL question's answer
+# needing to cover several distinct components - see the docstring in
+# src/generation/intent.py for why this is deliberately not is_multi_part().
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What was the patient's chief complaint?",
+        "What medication was prescribed?",
+        "Who is the patient's mother and father?",
+        "",
+    ],
+)
+def test_requests_multiple_components_is_false_for_simple_questions(query):
+    assert intent_module.requests_multiple_components(query) is False
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What were the findings for each diagnostic category?",
+        "What were the percentages for each treatment category?",
+        "What did the report say about diet, exercise, and medication?",
+        "What were the main findings regarding examinations, laboratory tests, and treatments?",
+    ],
+)
+def test_requests_multiple_components_is_true_for_multi_component_questions(query):
+    assert intent_module.requests_multiple_components(query) is True
+
+
 def test_multi_part_beats_numeric():
     query = "How many studies are cited, and what database was used?"
     assert classify_intent(query) == MULTI_PART

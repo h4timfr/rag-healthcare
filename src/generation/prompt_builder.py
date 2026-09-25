@@ -1,6 +1,8 @@
 import re
 
 from . import intent as intent_module
+from .. import text_match
+from ..retrieval.keyword_index import KeywordIndex
 
 SYSTEM_INSTRUCTION = """You are a healthcare document assistant.
 
@@ -145,6 +147,37 @@ ANSWER_STYLES = {
     ),
 }
 
+# FACTUAL's own style ("one or two sentences, no preamble") measurably fails
+# on multi-component/enumeration factual questions. Controlled ablation -
+# same retrieved evidence, same model, 5 repetitions per condition, on two
+# real questions whose answer requires several distinct facts - found 0/5
+# complete answers under the concise style and 5/5 complete under an
+# instruction that explicitly asks for every named component, with nothing
+# else changed. This is that instruction, used whenever
+# intent.is_enumeration_question() says the question calls for it (see
+# build_answer_style below) - the plain concise style stays the default for
+# an ordinary single-fact question. Kept fully generic: it names no
+# specific question, document, heading, or number, so it reads the same for
+# any document's content.
+FACTUAL_MULTI_COMPONENT_STYLE = (
+    "ANSWER STYLE\n"
+    "Answer the question directly from the EVIDENCE. Explicitly address "
+    "every distinct component the question asks about - do not omit one "
+    "merely to keep the answer short.\n"
+    "- Include the relevant numerical values for each component when the "
+    "EVIDENCE contains them.\n"
+    "- If the question asks for the most/least frequent, common, or "
+    "highest-ranking items, list them in the order the EVIDENCE's own "
+    "numbers support, not the order they happen to appear in the EVIDENCE "
+    "text.\n"
+    "- Do not invent facts. If one component genuinely has no supporting "
+    "EVIDENCE, say so for that component only and still answer the rest.\n"
+    "- Use headings or a list only if they make the answer clearer - do not "
+    "impose a structure the question does not call for.\n"
+    "- Never describe the retrieval process or which evidence was searched - "
+    "answer the question itself."
+)
+
 
 def build_answer_plan(query: str, history: list[dict] | None = None) -> str:
     """Numbered plan for a multi-part question, e.g.
@@ -223,11 +256,23 @@ def build_answer_style(
     own established per-document structure (see build_multi_document_prompt),
     and decomposing on top of that would double-structure the answer for no
     benefit.
+
+    A FACTUAL question (only - every other intent keeps its own established
+    style unchanged) that intent.is_enumeration_question() flags - a named
+    list, an implied "each/every" enumeration, or a most/least-frequent
+    ranking - gets FACTUAL_MULTI_COMPONENT_STYLE instead of the plain
+    concise FACTUAL style, checked after the multi-part plan so a question
+    that genuinely decomposes into standalone parts still gets the numbered
+    plan rather than this single-answer-with-several-components style.
     """
     if resolved_intent not in (intent_module.EACH_DOCUMENT, intent_module.COMPARISON):
         plan = build_answer_plan(query, history=history)
         if plan:
             return plan
+
+    if resolved_intent == intent_module.FACTUAL and intent_module.is_enumeration_question(query):
+        return FACTUAL_MULTI_COMPONENT_STYLE
+
     return ANSWER_STYLES.get(resolved_intent, ANSWER_STYLES[intent_module.FACTUAL])
 
 
@@ -544,6 +589,131 @@ def build_part_context(chunks: list[dict], parts: list[str]) -> str:
         sections.append(f"PART {i} ({part_query}):\n{blocks}")
 
     return "\n\n".join(sections)
+
+
+# ---------------------------------------------------------------------------
+# Presentation-only context ordering (single-document path).
+#
+# Retrieval audit finding: for two real single-document questions, the chunk
+# containing the actual answer (specific percentages) was retrieved -
+# RRF ranked it within the selected chunks - but sat at or near the END of
+# the evidence list, behind several topically-adjacent chunks that discuss
+# the same general subject without the specific figures asked for. Given
+# that evidence, the model described the existence of the right table/
+# section instead of reading its values, or answered from the wrong
+# lookalike chunk. Retrieval SELECTION was not the (whole) problem;
+# PRESENTATION ORDER was untested as a separate variable, and turned out to
+# matter.
+#
+# This reorders the already-selected chunks - it can never add or remove a
+# chunk retrieval didn't already choose, and RRF's ranking remains the
+# reason any given chunk was selected at all. It only decides where, among
+# the selected chunks, a chunk already carrying strong, specific evidence
+# for THIS query is placed for the model to read.
+# ---------------------------------------------------------------------------
+
+_NUMERIC_TOKEN = re.compile(r"\d+(?:\.\d+)?%?")
+
+# Bounds, chosen to be conservative rather than tuned to any one document:
+#   PROTECT_FRONT   the strongest RRF results are never displaced - "prefer
+#                    an approach that preserves the strongest RRF results
+#                    near the front" is satisfied structurally, not by score.
+#   MAX_PROMOTED    caps how many chunks a single reorder can pull forward,
+#                    so one strong chunk cannot reshuffle the whole context -
+#                    only a small, bounded prefix right after the protected
+#                    front ever changes.
+#   MIN_TERM_MATCHES the promotion threshold. Set above 1 specifically so a
+#                    single incidental word match - e.g. a stopword-adjacent
+#                    common term - can never promote a chunk on its own; see
+#                    _numeric_evidence_score's gate below for why lexical
+#                    overlap alone (no numeric content) also never promotes.
+PROTECT_FRONT = 2
+MAX_PROMOTED = 3
+MIN_TERM_MATCHES = 2
+
+
+def _significant_query_terms(query: str) -> list[str]:
+    """The query's own content words, by the SAME definition FTS5 already
+    uses for "significant term" (KeywordIndex.STOPWORDS) - reused rather
+    than a second, potentially-diverging notion of what counts as content
+    versus filler in a question.
+    """
+    terms = re.findall(r"[A-Za-z0-9_]+", (query or "").lower())
+    return [t for t in terms if t not in KeywordIndex.STOPWORDS]
+
+
+def _numeric_evidence_score(text: str, significant_terms: list[str]) -> int:
+    """How strongly `text` carries SPECIFIC, on-topic evidence for the query.
+
+    Deliberately not a plain word-overlap count - "avoid simply sorting by
+    raw word overlap" - because raw overlap promotes any chunk that merely
+    discusses the same subject, which is exactly the failure mode observed
+    (topically-adjacent chunks outnumbering the one with the actual figures).
+    The score is the count of distinct significant query terms the text
+    contains (word-boundary/morphology-aware match via text_match.contains_term,
+    the same matcher this project already uses to grade whether an ANSWER
+    covers a required term) - but ONLY if the text also contains at least
+    one number. A chunk with high term overlap and no numbers scores 0: it
+    may be relevant prose, but it is not the specific data point the
+    "strong lexical/numeric evidence" requirement asks to detect, and a
+    plain lexical scorer would promote it anyway.
+    """
+    if not _NUMERIC_TOKEN.search(text or ""):
+        return 0
+    return sum(1 for term in significant_terms if text_match.contains_term(text, term))
+
+
+def order_chunks_for_presentation(query: str, chunks: list[dict]) -> list[dict]:
+    """Reorder already-retrieved `chunks` for presentation only - RRF
+    selection and scoring are untouched; this decides where, among the
+    chunks retrieval already chose, each one appears in the prompt (and,
+    since this is applied to the same list callers pass on to the evidence
+    UI, in the evidence panel too - so a citation number keeps meaning the
+    same chunk in both places, exactly as it already does for the
+    multi-document path's rank numbering).
+
+    The first PROTECT_FRONT chunks (RRF's own strongest results) are never
+    moved. Among the rest, up to MAX_PROMOTED chunks scoring at least
+    MIN_TERM_MATCHES on _numeric_evidence_score are pulled forward, ordered
+    by that score (ties broken by original rank, for determinism); every
+    other chunk keeps its original relative RRF order and is appended
+    after. A chunk's own `score` (the RRF fused score) is left untouched;
+    only `rank` is reassigned, to the chunk's new position, matching how
+    retrieve_for_question() already renumbers `rank` after merging
+    multi-part results.
+
+    Returns a new list of shallow-copied chunk dicts; `chunks` itself is
+    never mutated. Returns `chunks` unchanged (but still copied) if there
+    are too few chunks to reorder or the query has no significant terms to
+    score against.
+    """
+    if len(chunks) <= PROTECT_FRONT:
+        return [dict(c) for c in chunks]
+
+    significant_terms = _significant_query_terms(query)
+    if not significant_terms:
+        return [dict(c) for c in chunks]
+
+    protected = chunks[:PROTECT_FRONT]
+    rest = chunks[PROTECT_FRONT:]
+
+    scored = [(chunk, _numeric_evidence_score(chunk["text"], significant_terms)) for chunk in rest]
+
+    # Stable sort by score only, so equal-scoring chunks keep their original
+    # relative RRF order - this is what makes tie-breaking deterministic
+    # without a second sort key.
+    promotable = sorted(
+        (pair for pair in scored if pair[1] >= MIN_TERM_MATCHES),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    promoted = [chunk for chunk, _score in promotable[:MAX_PROMOTED]]
+    promoted_ids = {c["chunk_id"] for c in promoted}
+
+    remainder = [c for c in rest if c["chunk_id"] not in promoted_ids]
+
+    new_order = protected + promoted + remainder
+    return [{**c, "rank": i} for i, c in enumerate(new_order, start=1)]
 
 
 def build_production_prompt(

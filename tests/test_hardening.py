@@ -199,7 +199,7 @@ def test_balanced_allocation_skips_chunks_whose_metadata_vanished():
 
 
 def test_single_document_scope_is_unaffected_by_the_new_wiring(two_documents, monkeypatch):
-    monkeypatch.setattr(app, "generate", lambda prompt: "mock answer")
+    monkeypatch.setattr(app, "generate", lambda prompt, num_predict=None: "mock answer")
 
     result = app.answer_question("insulin guidance", document_id=two_documents["a"])
 

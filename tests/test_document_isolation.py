@@ -91,7 +91,7 @@ def test_querying_active_document_does_not_leak_other_documents_chunks(
     # of query text, then confirm scoping to it returns only its own chunks.
     omc_vector = _fake_embed_texts([_first_chunk_text(omc_id)])[0]
     monkeypatch.setattr(hybrid_retriever, "embed_query", lambda q: omc_vector)
-    monkeypatch.setattr(app, "generate", lambda prompt: "mock answer")
+    monkeypatch.setattr(app, "generate", lambda prompt, num_predict=None: "mock answer")
 
     result = app.answer_question("tell me about this document", document_id=omc_id)
 

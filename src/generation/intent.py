@@ -62,8 +62,19 @@ _FOLLOW_UP_PATTERNS = (
 )
 
 _EACH_DOCUMENT_PATTERNS = (
-    re.compile(r"\beach\b"),
-    re.compile(r"\bevery\b"),
+    # Document-scoped only. Bare "\beach\b"/"\bevery\b" also matched ordinary
+    # content-level questions - "What were the findings for each diagnostic
+    # category?" - where "each" refers to something INSIDE the document, not
+    # to separate documents. That misclassification activated the
+    # per-document ANSWER STYLE (build_answer_style() reads EACH_DOCUMENT
+    # straight off classify_intent(), unguarded by document_inventory) on a
+    # single-document question with no document list to draw section names
+    # from, and the model fabricated headings like "Pediatric Report.pdf:"
+    # to comply with it. Requiring a document noun immediately after
+    # "each"/"every" keeps "each selected document"/"every document?"
+    # matching while "each diagnostic category"/"each treatment category"
+    # no longer do.
+    re.compile(r"\b(each|every)\s+(selected\s+)?(document|documents|report|reports|file|files|pdf|pdfs)\b"),
     re.compile(r"\ball (of )?(the )?(selected )?(documents|reports|files|pdfs)\b"),
     re.compile(r"\bseparately\b"),
     re.compile(r"\bper document\b"),
@@ -159,6 +170,98 @@ def split_question_parts(query: str) -> list[str]:
 
 def is_multi_part(query: str) -> bool:
     return len(split_question_parts(query)) > 1
+
+
+# ---------------------------------------------------------------------------
+# Multi-component factual detection.
+#
+# is_multi_part() above finds a question phrased as two or more separate
+# QUESTIONS joined by "and"/"as well as" - "what medications ..., and what
+# condition ...". That is a different shape from a single factual question
+# that still asks for several distinct pieces of information in one answer:
+# "what were the findings for each diagnostic category?" or "what were the
+# findings regarding X, Y, and Z?" are each one grammatical question - there
+# is no interrogative-led second half for split_question_parts() to find -
+# yet the answer genuinely has several required parts: one per category
+# value, or one per named topic. Reusing is_multi_part()/MULTI_PART here was
+# considered and rejected: MULTI_PART's answer style is a numbered
+# "Part 1: ... Part 2: ..." plan built by decomposing the question into
+# STANDALONE questions, and neither shape above decomposes into standalone
+# questions - there is nothing to number, only components not to omit.
+# requests_multiple_components() is a narrower, purely lexical signal for
+# exactly that, so a FACTUAL question's answer style can ask for completeness
+# across components instead of brevity - see prompt_builder.build_answer_style.
+# ---------------------------------------------------------------------------
+
+# A bare "each"/"every" that reaches this point already failed
+# _EACH_DOCUMENT_PATTERNS (checked earlier, with higher priority - see
+# classify_intent), so it is not asking for one section per selected
+# document. It is asking about multiple values of something INSIDE the
+# evidence (each diagnostic category, each treatment type, every visit),
+# which is exactly the signal that the answer must enumerate more than one
+# thing.
+_EACH_OR_EVERY = re.compile(r"\b(each|every)\b")
+
+# A comma-separated list of three or more named items ending in "..., and X"
+# / "..., or X" - e.g. "examinations, laboratory tests, and treatments".
+# Requires at least two commas (three items), not a bare "X and Y", so
+# ordinary two-item conjunctions ("mother and father", "nausea and
+# vomiting") are not mistaken for an enumerated list of requested topics; a
+# genuine three-item list is a much stronger, still fully generic signal
+# that several distinct things were named.
+_COMPONENT_LIST = re.compile(r"[A-Za-z][\w\s]*?,\s*(?:[A-Za-z][\w\s]*?,\s*)+(?:and|or)\s+[A-Za-z]")
+
+
+def requests_multiple_components(query: str) -> bool:
+    """Whether a FACTUAL question's answer must cover more than one distinct
+    component - either an implied enumeration ("each"/"every" something,
+    document-scoped "each document" having already been ruled out by
+    classify_intent's own priority order) or an explicit three-or-more-item
+    list of named topics.
+
+    Deliberately generic: no document- or domain-specific vocabulary, so it
+    applies the same way to any document's content, not just one project's
+    test corpus.
+    """
+    q = (query or "").strip().lower()
+    if not q:
+        return False
+    return bool(_EACH_OR_EVERY.search(q) or _COMPONENT_LIST.search(q))
+
+
+# "most/least/top frequent|common|prevalent|popular <0-2 filler words>
+# <plural noun>" - e.g. "most frequent treatment categories", "least common
+# causes", "top prevalent complaint types". The final word must itself look
+# plural (ends in "s"), which is what keeps a singular-answer question like
+# "what was the most frequent complaint?" (one item wanted) from matching -
+# deliberately generic wording, no domain vocabulary, no item names.
+_ENUMERATION_RANKING = re.compile(
+    r"\b(?:most|least|top)\s+(?:frequent|common|prevalent|popular)\s+"
+    r"(?:\w+\s+){0,2}?(\w+s)\b"
+)
+
+
+def is_enumeration_question(query: str) -> bool:
+    """Whether a FACTUAL question's answer must be a genuine enumerated list
+    - and, where frequency/ranking language is used, correctly ORDERED -
+    rather than a single fact.
+
+    requests_multiple_components() above covers two shapes whose answer
+    must name several distinct things: an explicit "X, Y, and Z" list, and
+    a bare "each/every <noun>" enumeration. This adds a third: a
+    most/least-frequent RANKING question with no explicit list and no
+    "each"/"every" in sight ("what were the most frequent treatment
+    categories?") whose answer still has to enumerate - and order - several
+    items, not one. All three shapes are ORed together here so every
+    FACTUAL question whose answer must be a list, named/implied/ranked, is
+    covered by one signal.
+    """
+    if requests_multiple_components(query):
+        return True
+    q = (query or "").strip().lower()
+    if not q:
+        return False
+    return bool(_ENUMERATION_RANKING.search(q))
 
 
 # ---------------------------------------------------------------------------

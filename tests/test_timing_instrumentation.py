@@ -121,7 +121,7 @@ def test_answer_question_still_works_after_refactor(monkeypatch):
             {"chunk_id": 1, "document_id": "d1", "source": "a.pdf", "page": 2, "text": "t", "score": 0.1, "rank": 1}
         ],
     )
-    monkeypatch.setattr(app, "generate", lambda prompt: "an answer")
+    monkeypatch.setattr(app, "generate", lambda prompt, num_predict=None: "an answer")
 
     result = app.answer_question("a question")
 

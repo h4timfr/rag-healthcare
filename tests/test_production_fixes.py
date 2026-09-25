@@ -401,7 +401,7 @@ def test_answer_question_unaffected_by_top_k_widening_logic(monkeypatch):
         app, "retrieve_hybrid",
         lambda query, top_k=5, document_id=None: [_chunk("d1", "a.pdf", 2, "t", 1)],
     )
-    monkeypatch.setattr(app, "generate", lambda prompt: "an answer")
+    monkeypatch.setattr(app, "generate", lambda prompt, num_predict=None: "an answer")
 
     result = app.answer_question("a question")
 

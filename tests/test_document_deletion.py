@@ -82,7 +82,7 @@ def test_remaining_document_still_retrieves_correctly(two_uploaded_documents, mo
     b_vector = _fake_embed_texts([b_chunk_text])[0]
     from src.retrieval import hybrid_retriever
     monkeypatch.setattr(hybrid_retriever, "embed_query", lambda q: b_vector)
-    monkeypatch.setattr(app, "generate", lambda prompt: "mock answer")
+    monkeypatch.setattr(app, "generate", lambda prompt, num_predict=None: "mock answer")
 
     result = app.answer_question("tell me about this", document_id=doc_b_id)
 

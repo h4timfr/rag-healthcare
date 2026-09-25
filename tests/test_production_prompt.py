@@ -129,6 +129,90 @@ def test_follow_up_style_points_at_the_conversation():
     assert "RECENT CONVERSATION:" in prompt
 
 
+# --- multi-component factual answer style (Task 6) ----------------------
+#
+# FACTUAL's own concise style measurably fails a factual question whose
+# answer must cover several distinct components (controlled 5-rep ablation,
+# see prompt_builder.FACTUAL_MULTI_COMPONENT_STYLE's comment). These tests
+# use one CDC-shaped pair (C, D) and one unrelated generic pair (B) to prove
+# the trigger is the question's SHAPE, not this project's document.
+
+
+def test_A_simple_factual_question_keeps_the_concise_style():
+    prompt = _production("What was the patient's chief complaint?")
+    assert "Give the answer directly, in one or two sentences" in prompt
+    assert "Explicitly address every distinct component" not in prompt
+
+
+def test_B_generic_multi_component_factual_question_gets_the_evidence_complete_style():
+    prompt = _production("What did the report say about diet, exercise, and medication?")
+    assert "Explicitly address every distinct component" in prompt
+    assert "Give the answer directly, in one or two sentences" not in prompt
+
+
+def test_C_cdc_each_category_shape_gets_the_evidence_complete_style():
+    prompt = _production("What were the findings for each diagnostic category?")
+    assert "Explicitly address every distinct component" in prompt
+
+
+def test_D_cdc_named_topic_list_shape_gets_the_evidence_complete_style():
+    prompt = _production(
+        "What were the main findings regarding examinations, laboratory tests, and treatments?"
+    )
+    assert "Explicitly address every distinct component" in prompt
+
+
+def test_E_other_intents_ignore_the_multi_component_signal_and_keep_their_own_style():
+    """A question shaped to trigger requests_multiple_components() must not
+    leak the FACTUAL-only style into a different intent's own established
+    style - SUMMARY/EACH_DOCUMENT/COMPARISON/FOLLOW_UP each keep their own
+    text even when the wording names multiple components."""
+    assert "Summarise the content" in build_answer_style(
+        "Summarize the findings for each category.", intent_module.SUMMARY
+    )
+    assert "one short section per selected document" in build_answer_style(
+        "Summarize each selected document separately.", intent_module.EACH_DOCUMENT
+    )
+    assert "concrete similarities first" in build_answer_style(
+        "Compare the findings for skin, trauma, and digestive categories.", intent_module.COMPARISON
+    )
+    assert "continues the conversation above" in build_answer_style(
+        "What about examinations, labs, and treatments?", intent_module.FOLLOW_UP
+    )
+
+
+def test_E_multi_part_question_still_gets_the_numbered_plan_not_the_component_style():
+    """A question that genuinely decomposes into standalone parts keeps the
+    numbered Part 1/Part 2 plan - requests_multiple_components() is checked
+    only after build_answer_plan() finds nothing to number."""
+    query = "What medications was she discharged on, and what condition was found later?"
+    prompt = _production(query)
+    assert "This question has 2 parts" in prompt
+    assert "Explicitly address every distinct component" not in prompt
+
+
+def test_F_multi_component_style_hardcodes_no_cdc_facts_or_forced_headings():
+    from src.generation import prompt_builder
+
+    style = prompt_builder.FACTUAL_MULTI_COMPONENT_STYLE.lower()
+    forbidden = [
+        "examinations:",
+        "laboratory tests:",
+        "treatments:",
+        "10.2",
+        "9.6",
+        "7.5",
+        "6.5",
+        "6.4",
+        "30.5",
+        "29.5",
+        "cdc",
+        "diagnostic category",
+    ]
+    for term in forbidden:
+        assert term not in style
+
+
 def test_exactly_one_answer_style_block_per_prompt():
     """Prompt bloat is a real cost on a 3B model - the styles are mutually
     exclusive, never stacked."""

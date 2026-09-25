@@ -27,14 +27,22 @@ from src.exceptions import (
     OllamaUnavailableError,
     RagError,
 )
-from src.generation.intent import decompose_question, needs_document_balance
+from src.generation.intent import (
+    FACTUAL,
+    _COMPONENT_LIST,
+    classify_intent,
+    decompose_question,
+    is_enumeration_question,
+    needs_document_balance,
+    requests_multiple_components,
+)
 from src.generation.ollama_client import (
     generate,
     generate_stream,
     get_status as get_ollama_status,
     warm_up as warm_up_ollama,
 )
-from src.generation.prompt_builder import build_prompt
+from src.generation.prompt_builder import build_prompt, order_chunks_for_presentation
 from src.retrieval.document_reference import resolve_document_reference
 from src.retrieval.faiss_index import FaissIndex
 from src.retrieval.hybrid_retriever import retrieve_for_question, retrieve_hybrid
@@ -249,6 +257,28 @@ def resolve_retrieval_top_k(
     return config.TOP_K
 
 
+# Widened retrieval depth for a single-document FACTUAL question whose
+# answer must cover several distinct, EXPLICITLY NAMED components (intent.
+# requests_multiple_components() - the same signal build_answer_style()
+# already uses to pick the evidence-complete ANSWER STYLE, see
+# prompt_builder.py). Controlled 45-question research-corpus evaluation
+# (baseline K=5 vs this rule) found zero regressions on any metric, since
+# retrieve_hybrid()'s candidate pool and RRF fusion are independent of
+# top_k - widening only appends more already-ranked candidates, it never
+# changes or reorders the first 5.
+#
+# requests_multiple_components() itself is True for either of two shapes -
+# an explicit "X, Y, and Z" list, or a bare "each/every <noun>" - because
+# both need the same ANSWER STYLE. They do NOT get the same retrieval
+# treatment here: only the explicit-list shape (intent._COMPONENT_LIST) is
+# widened below. The each/every shape is deliberately left at config.TOP_K
+# for now - evidence for widening it is thinner (a single real document's
+# worth of measurement, see Task 8-11) and is being held back pending
+# further validation, not implemented alongside this narrower, better-
+# supported change.
+WIDENED_FACTUAL_TOP_K = 8
+
+
 def resolve_num_predict(
     query: str,
     history: list[dict] | None,
@@ -270,9 +300,26 @@ def resolve_num_predict(
     itself uses for the multi-part retrieval decision, so this can never
     disagree with whether the prompt actually ended up structured as
     multiple parts.
+
+    Also widened for a single-document FACTUAL enumeration question
+    (intent.is_enumeration_question() - a named list, an implied "each/
+    every" enumeration, or a most/least-frequent ranking; the same signal
+    build_answer_style() uses for FACTUAL_MULTI_COMPONENT_STYLE, see
+    prompt_builder.py). Measured need: "What were the main findings
+    regarding examinations, laboratory tests, and treatments?" is not
+    multi-part (decompose_question finds no "and <interrogative>" second
+    question) and has no document_inventory, so it kept the smaller
+    default budget even once retrieval supplied the right evidence - the
+    answer was cut off mid-sentence before reaching its third named
+    component. Gated on FACTUAL specifically (not every factual question)
+    so an ordinary single-fact question keeps the smaller default budget.
     """
     multi_part = len(decompose_question(query, history=history)) > 1
-    if document_inventory or multi_part:
+    enumeration = (
+        classify_intent(query, history=history) == FACTUAL
+        and is_enumeration_question(query)
+    )
+    if document_inventory or multi_part or enumeration:
         return config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT
     return None
 
@@ -397,10 +444,29 @@ def retrieve_and_build_prompt(
             # is deliberately scoped to the single-document path only.
             chunks = retrieve_hybrid(query, **retrieve_kwargs)
         else:
+            single_document_top_k = retrieve_kwargs["top_k"]
+            # Only step in when the caller left top_k at its ordinary
+            # default - a caller that already asked for a specific top_k
+            # (a diagnostic script, e.g.) is left alone, and this can never
+            # apply to a genuinely MULTI_PART-classified question, since
+            # that label wins classify_intent()'s priority over FACTUAL and
+            # this rule is gated on FACTUAL specifically. requests_multiple_
+            # components() alone is not enough to decide the WIDTH - see
+            # WIDENED_FACTUAL_TOP_K's comment - so the explicit-list shape
+            # is also checked directly, and the each/every shape is left
+            # untouched even though it also satisfies requests_multiple_
+            # components().
+            if (
+                single_document_top_k == config.TOP_K
+                and classify_intent(query, history=history) == FACTUAL
+                and requests_multiple_components(query)
+                and _COMPONENT_LIST.search(query.lower())
+            ):
+                single_document_top_k = WIDENED_FACTUAL_TOP_K
             chunks = retrieve_for_question(
                 query,
                 history=history,
-                top_k=retrieve_kwargs["top_k"],
+                top_k=single_document_top_k,
                 document_id=retrieve_kwargs.get("document_id"),
                 timing=timing,
                 retrieve_fn=retrieve_hybrid,
@@ -410,6 +476,18 @@ def retrieve_and_build_prompt(
 
     if not chunks:
         raise InsufficientRetrievalError("No relevant chunks found for this query")
+
+    # Presentation-only reorder (see order_chunks_for_presentation's
+    # docstring for the full rationale): RRF has already done the actual
+    # retrieval selection above, unmodified - this only decides where,
+    # among the chunks it selected, each one is placed for the model to
+    # read. Scoped to the single-document, single-part case on purpose -
+    # document_inventory means the each-document/comparison balancing path
+    # below owns ordering instead, and a `part`-tagged chunk (multi-part
+    # retrieval) has its own PART-grouped structure in build_part_context()
+    # that this reorder isn't designed for.
+    if not document_inventory and not any("part" in c for c in chunks):
+        chunks = order_chunks_for_presentation(query, chunks)
 
     t0 = time.perf_counter()
     prompt = build_prompt(
@@ -455,9 +533,17 @@ def answer_question(query: str, top_k: int = config.TOP_K, document_id: str | No
     full retrieved chunks (with text) so the UI can show the evidence, and to
     accept an optional document_id so retrieval can be scoped to the active
     document instead of the whole corpus.
+
+    Uses resolve_num_predict() for the generation budget - the same function
+    the Streamlit chat turn uses - so a multi-part or enumeration question
+    gets the larger budget here too. Before this, this entry point never
+    passed num_predict at all: a single-document FACTUAL enumeration
+    question could have retrieval supply every needed chunk and still have
+    its answer cut off mid-sentence on the default budget.
     """
     chunks, prompt = retrieve_and_build_prompt(query, top_k=top_k, document_id=document_id)
-    answer = generate(prompt)
+    num_predict = resolve_num_predict(query, history=None, document_inventory=None)
+    answer = generate(prompt, num_predict=num_predict)
     sources = [{"source": c["source"], "page": c["page"], "score": c["score"]} for c in chunks]
     return {"answer": answer, "sources": sources, "chunks": chunks}
 
