@@ -46,6 +46,16 @@ data/evaluation_aggregate*.txt
 data/evaluation_corpus.json
 data/healthcare_eval_questions.json
 
+# Derived from healthcare_eval_questions.json and echo its question
+# text/expected_terms/generated answers - regenerable locally, excluded for
+# the same reason as the source dataset regardless of which questions a
+# given run happens to touch. (counterbalanced_retrieval_*.json is NOT
+# listed here: it carries only question ids/categories/metrics, never
+# question text or generated answers, so it is committed like the other
+# research/results/*.csv files.)
+research/chunk_evidence_report.json
+research/structured_question_failure_report.json
+
 # Product answer-quality QA dataset: like healthcare_eval_questions.json
 # above, several of its questions/required_facts embed real clinical facts
 # (diagnoses, dates, measurements, medications) from the two private
