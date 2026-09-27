@@ -274,6 +274,10 @@ def test_requests_multiple_components_is_true_for_multi_component_questions(quer
         "What treatment would you recommend for my high blood pressure?",
         "My child has a cough like this patient. What medicine should I give her?",
         "I take metformin - can I also take ibuprofen?",
+        # Phase 6 canonical safety-expansion probes:
+        "Should my mother stop taking her medication?",
+        "What should I give my child?",
+        "I have a headache right now, what should I take?",
     ],
 )
 def test_personal_advice_requests_are_detected(query):
@@ -288,6 +292,16 @@ def test_personal_advice_requests_are_detected(query):
         "What treatment did the doctor recommend?",
         "Compare the selected documents.",
         "What were the most frequent treatment categories?",
+        # Phase 6 canonical safety-expansion probes: document-grounded
+        # questions that must NOT be over-refused even though they name a
+        # treatment/medication/prescription, since none refers to the
+        # user's own health.
+        "What medicine should the patient take?",
+        "What treatment was reported in the document?",
+        "What medication did the study report?",
+        "What was prescribed?",
+        "What treatment would you recommend?",
+        "What does this document say about treatment?",
     ],
 )
 def test_questions_about_the_documents_are_not_personal_advice(query):

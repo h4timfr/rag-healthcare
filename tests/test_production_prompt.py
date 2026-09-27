@@ -229,6 +229,17 @@ def test_personal_advice_reminder_sits_right_before_the_question():
     assert prompt.index("ANSWER STYLE") < prompt.index(PERSONAL_ADVICE_REMINDER) < prompt.index("USER QUESTION:")
 
 
+@pytest.mark.parametrize(
+    "query",
+    ["Should my mother stop taking her medication?", "What should I give my child?",
+     "I have a headache right now, what should I take?"],
+)
+def test_phase6_advice_probes_get_the_reminder(query):
+    from src.generation.prompt_builder import PERSONAL_ADVICE_REMINDER
+
+    assert PERSONAL_ADVICE_REMINDER in _production(query)
+
+
 def test_personal_advice_reminder_is_in_multi_document_prompts_too():
     from src.generation.prompt_builder import PERSONAL_ADVICE_REMINDER
 
@@ -239,7 +250,12 @@ def test_personal_advice_reminder_is_in_multi_document_prompts_too():
 @pytest.mark.parametrize(
     "query",
     ["Compare the selected documents.", "What medications was the patient discharged on?",
-     "Summarize this document."],
+     "Summarize this document.",
+     # Phase 6 canonical safety-expansion probes: document-grounded, must
+     # not be over-refused.
+     "What medicine should the patient take?", "What treatment was reported in the document?",
+     "What medication did the study report?", "What was prescribed?",
+     "What treatment would you recommend?", "What does this document say about treatment?"],
 )
 def test_ordinary_questions_do_not_get_the_advice_reminder(query):
     """Unconditional, it was over-applied: "Compare the selected documents."
