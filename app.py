@@ -45,8 +45,9 @@ from src.generation.ollama_client import (
 )
 from src.generation.prompt_builder import build_prompt, order_chunks_for_presentation
 from src.retrieval.document_reference import resolve_document_reference
-from src.retrieval.faiss_index import INDEX_WRITE_LOCK, FaissIndex
+from src.retrieval.faiss_index import FaissIndex, cross_process_index_lock
 from src.retrieval.hybrid_retriever import retrieve_for_question, retrieve_hybrid
+from src.retrieval.index_consistency import check_consistency, repair
 from src.retrieval.metadata_store import MetadataStore
 
 TAGLINE = "A retrieval-augmented question-answering prototype over healthcare PDFs"
@@ -178,13 +179,14 @@ def delete_document(document_id: str) -> dict:
     those are never served: hybrid_retriever already skips any chunk_id that
     has no matching SQLite row (see MetadataStore.get_chunks usage there).
 
-    Held under INDEX_WRITE_LOCK so a concurrent upload's load..save cannot
+    Held under cross_process_index_lock() so a concurrent upload's
+    load..save - in this process or another (e.g. the ingest CLI) - cannot
     interleave with this one and have either overwrite the other's index.
 
     Returns {"removed_chunks": int}.
     """
     store = MetadataStore(config.DB_PATH)
-    with INDEX_WRITE_LOCK:
+    with cross_process_index_lock(config.FAISS_INDEX_PATH):
         chunk_ids = store.delete_document(document_id)
 
         if chunk_ids:
@@ -1378,8 +1380,64 @@ def render_chat(
     )
 
 
+def ensure_index_consistency():
+    """Reconcile SQLite/FAISS (see src/retrieval/index_consistency.py)
+    before anything else touches either store - the known failure this
+    guards is a process kill between an ingest's SQLite commit and its
+    FAISS save, which leaves a document's chunks searchable by keyword but
+    invisible to dense retrieval.
+
+    Cheap when already consistent - an id-set diff plus an O(n) norm check
+    over at most a few hundred vectors, this project's own observed scale -
+    so it runs on every call (a Streamlit rerun included) rather than being
+    cached: simpler than adding a "checked once" flag, and the caching
+    would save time nobody would notice at this scale.
+
+    Returns the post-repair report if something remains wrong (only a
+    dimension mismatch or an unrepaired corruption can leave this non-None -
+    both are deliberately never auto-repaired, see repair()'s docstring), or
+    None if the index was already consistent or repair() fixed everything.
+    """
+    report = check_consistency()
+    if report.is_consistent:
+        return None
+
+    print(
+        "Index consistency check found an issue - repairing: "
+        f"dense_invisible={len(report.dense_invisible_chunk_ids)} "
+        f"orphan={len(report.orphan_faiss_ids)} duplicate={len(report.duplicate_faiss_ids)} "
+        f"dimension_mismatch={report.dimension_mismatch} corrupted={report.faiss_corrupted}"
+    )
+    repaired = repair()
+    if repaired.is_consistent:
+        print("Index consistency repaired.")
+        return None
+
+    print(
+        "Index consistency issue could not be auto-repaired - "
+        f"dimension_mismatch={repaired.dimension_mismatch} "
+        f"unnormalized={len(repaired.unnormalized_chunk_ids)}"
+    )
+    return repaired
+
+
 def main() -> None:
     st.set_page_config(page_title="RAG for Healthcare Documents", page_icon="🩺", layout="wide")
+
+    consistency_issue = ensure_index_consistency()
+    if consistency_issue is not None:
+        if consistency_issue.dimension_mismatch:
+            st.error(
+                "The document index's vectors do not match the configured embedding "
+                "model (dimension mismatch) and could not be automatically repaired. "
+                "Dense retrieval is unavailable until the index is rebuilt."
+            )
+        else:
+            st.warning(
+                "The document index needed repair on startup. Some vectors could not "
+                "be verified as normalized - retrieval scores for affected chunks may "
+                "be less reliable."
+            )
 
     st.session_state.setdefault("chat_history", [])
     st.session_state.setdefault("active_document_id", None)

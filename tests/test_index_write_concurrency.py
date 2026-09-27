@@ -13,6 +13,7 @@ is exactly where a real upload spends most of its time.
 import sqlite3
 import threading
 import time
+from pathlib import Path
 
 import faiss
 import numpy as np
@@ -184,3 +185,64 @@ def test_failed_save_leaves_the_existing_index_intact(isolated_index, monkeypatc
     assert sorted(_faiss_ids()) == [1, 2, 3]
     leftovers = [p.name for p in isolated_index.iterdir() if ".tmp-" in p.name]
     assert leftovers == []
+
+
+# --- cross-process (real subprocesses, not threads) ----------------------------
+#
+# INDEX_WRITE_LOCK is a threading.RLock: it serializes threads of ONE process
+# (what the tests above exercise) but gives zero protection between two
+# separate processes - e.g. the ingest CLI run while the Streamlit app is
+# also up. Verified by removing cross_process_index_lock()'s OS file lock and
+# re-running this test: it reproduces the identical lost-update, confirming
+# the OS lock (not just INDEX_WRITE_LOCK) is what these two processes need.
+
+_CROSS_PROCESS_WORKER = """
+import sys, time
+sys.path.insert(0, {project_root!r})
+from src import config
+config.DB_PATH = {db_path!r}
+config.FAISS_INDEX_PATH = {faiss_path!r}
+import numpy as np
+import scripts.ingest as ingest_module
+
+def fake_embed(texts):
+    time.sleep(0.6)  # force temporal overlap between the two processes
+    rng = np.random.default_rng(len(texts) + int(sys.argv[2]))
+    v = rng.standard_normal((len(texts), config.EMBEDDING_DIM)).astype("float32")
+    return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+ingest_module.embed_texts = fake_embed
+ingest_module.ingest_pdf(sys.argv[1])
+"""
+
+
+def test_cross_process_ingestion_is_serialized(isolated_index):
+    """Two real OS processes ingesting different documents at the same time
+    must not lose either one's vectors - reproduced without
+    cross_process_index_lock's file lock, fixed with it."""
+    import subprocess
+    import sys
+
+    root = str(Path(__file__).resolve().parents[1])
+    worker = isolated_index / "_worker.py"
+    worker.write_text(
+        _CROSS_PROCESS_WORKER.format(
+            project_root=root, db_path=str(config.DB_PATH), faiss_path=str(config.FAISS_INDEX_PATH)
+        ),
+        encoding="utf-8",
+    )
+    pdf_a, pdf_b = isolated_index / "a.pdf", isolated_index / "b.pdf"
+    _make_pdf(pdf_a, "alpha " * 400)
+    _make_pdf(pdf_b, "bravo " * 400)
+
+    procs = [
+        subprocess.Popen([sys.executable, str(worker), str(pdf_a), "1"]),
+        subprocess.Popen([sys.executable, str(worker), str(pdf_b), "2"]),
+    ]
+    for p in procs:
+        assert p.wait(timeout=30) == 0
+
+    faiss_ids = _faiss_ids()
+    assert len(faiss_ids) == len(set(faiss_ids))
+    assert set(faiss_ids) == _sqlite_ids()
+    assert len(_sqlite_ids()) == 6  # both documents' 3 chunks each, nothing lost

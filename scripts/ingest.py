@@ -16,7 +16,7 @@ from src.exceptions import RagError
 from src.ingestion.chunker import chunk_pages
 from src.ingestion.cleaner import clean_text
 from src.ingestion.pdf_extractor import degraded_pages, extract_pages, repaired_pages
-from src.retrieval.faiss_index import INDEX_WRITE_LOCK, FaissIndex
+from src.retrieval.faiss_index import FaissIndex, cross_process_index_lock
 from src.retrieval.metadata_store import MetadataStore
 
 
@@ -71,9 +71,11 @@ def ingest_pdf(pdf_path: str, db_path: str | None = None, faiss_index_path: str 
     # outside the write lock - concurrent uploads still embed in parallel.
     embeddings = embed_texts([c.text for c in chunks])
 
-    with INDEX_WRITE_LOCK:
+    with cross_process_index_lock(faiss_index_path):
         # Re-checked under the lock: two uploads of the same file at once both
-        # pass the check above, and without this both would insert.
+        # pass the check above, and without this both would insert. Covers
+        # the ingest CLI running alongside the Streamlit app too, not just
+        # two threads of one process - see cross_process_index_lock().
         existing = store.document_chunk_count(document_id)
         if existing > 0:
             print(
