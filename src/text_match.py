@@ -82,6 +82,66 @@ def contains_exact(haystack: str, needle: str) -> bool:
     return bool(needle) and needle.lower() in (haystack or "").lower()
 
 
+# Cues that, immediately next to a forbidden phrase, turn it from an
+# assertion into a denial of it. "n't" is checked as a word suffix (not a
+# separate token) so "doesn't"/"isn't"/"wasn't" all match without listing
+# every contraction.
+_NEGATION_WORDS = frozenset(
+    {"not", "no", "never", "none", "cannot", "unavailable", "unknown", "unclear", "nowhere"}
+)
+_NEGATION_WORD_PATTERN = re.compile(r"[a-z']+")
+_NEARBY_WORDS = 4  # how many words on each side of a match count as "immediately next to"
+
+
+def contains_unnegated(haystack: str, needle: str, window_chars: int = 40) -> bool:
+    """Whether `haystack` asserts `needle`, rather than denying it.
+
+    Built for grading forbidden-phrase violations: contains_exact("The
+    patient's blood type is not mentioned.", "blood type is") is True but
+    the sentence denies exactly what the phrase would otherwise assert - a
+    false positive that penalized a CORRECT refusal. This finds every
+    occurrence of `needle` and only counts it as a real hit if at least one
+    occurrence has no negation word within _NEARBY_WORDS words before or
+    after it; an occurrence that IS negated is skipped, not the whole
+    haystack.
+
+    Quotation marks around the match do not suppress it - a hallucinated
+    fact quoted back is still hallucinated. A needle appearing in an
+    unrelated context (e.g. "5.0" as a page number) is unaffected by this
+    function either way - that is a substring-matching limitation this
+    function does not attempt to fix, only negation is handled here.
+    """
+    haystack_l = (haystack or "").lower()
+    needle_l = (needle or "").lower()
+    if not needle_l:
+        return False
+
+    positions = []
+    start = 0
+    while True:
+        idx = haystack_l.find(needle_l, start)
+        if idx == -1:
+            break
+        positions.append(idx)
+        start = idx + 1
+    if not positions:
+        return False
+
+    for idx in positions:
+        end = idx + len(needle_l)
+        before = haystack_l[max(0, idx - window_chars):idx]
+        after = haystack_l[end:end + window_chars]
+        nearby_words = (
+            _NEGATION_WORD_PATTERN.findall(before)[-_NEARBY_WORDS:]
+            + _NEGATION_WORD_PATTERN.findall(after)[:_NEARBY_WORDS]
+        )
+        negated = any(w in _NEGATION_WORDS or w.endswith("n't") for w in nearby_words)
+        if not negated:
+            return True  # at least one occurrence is a real, unnegated claim
+
+    return False  # every occurrence of `needle` was negated
+
+
 def contains_term(haystack: str, needle: str) -> bool:
     """Whether `haystack` contains `needle`, allowing morphological variants.
 

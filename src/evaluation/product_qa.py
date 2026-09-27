@@ -37,7 +37,7 @@ from src.exceptions import (
 from src.generation.ollama_client import generate
 from src.generation.validation import is_refusal, validate_answer
 from src.retrieval.metadata_store import MetadataStore
-from src.text_match import contains_exact, contains_term, mentions_document
+from src.text_match import contains_exact, contains_term, contains_unnegated, mentions_document
 
 DEFAULT_DATASET_PATH = config.PROJECT_ROOT / "data" / "product_qa.json"
 
@@ -209,7 +209,10 @@ def evaluate_turn(turn_spec: dict, result: dict, category: str) -> dict:
     document_coverage = (len(doc_hits_retrieval) / len(required_sources)) if required_sources else None
 
     forbidden_terms = turn_spec.get("forbidden_terms", [])
-    forbidden_hits = [t for t in forbidden_terms if contains_exact(answer, t)]
+    # contains_unnegated(), not contains_exact(): "The patient's blood
+    # type is not mentioned" is a correct refusal, not a hallucinated
+    # "blood type is" claim - see its docstring.
+    forbidden_hits = [t for t in forbidden_terms if contains_unnegated(answer, t)]
 
     refusal_detected = is_refusal(answer)
 

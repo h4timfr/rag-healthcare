@@ -12,6 +12,7 @@ import pytest
 from src.text_match import (
     contains_exact,
     contains_term,
+    contains_unnegated,
     document_keywords,
     mentions_document,
     stem,
@@ -161,3 +162,65 @@ def test_partial_cardio_reference_alone_is_not_enough():
 
 def test_mentions_document_handles_missing_source():
     assert mentions_document("anything", "") is False
+
+
+# --- contains_unnegated: forbidden-phrase grading that a denial does not trip ---
+#
+# Phase 8 regression: the product QA grader's forbidden_terms check used
+# contains_exact(), which cannot tell "X" from "X is not true" - Q19's real
+# forbidden term "blood type is" flagged the CORRECT refusal "The patient's
+# blood type is not mentioned in the provided evidence." as if it were the
+# hallucinated "The patient's blood type is A+." it exists to catch.
+
+
+def test_positive_forbidden_phrase_is_flagged():
+    assert contains_unnegated("The patient's blood type is A+.", "blood type is") is True
+
+
+def test_negated_forbidden_phrase_is_not_flagged():
+    assert contains_unnegated("The patient's blood type is not mentioned.", "blood type is") is False
+
+
+def test_negation_further_away_does_not_suppress_a_real_hit():
+    """The negation cue must be genuinely NEAR the phrase - a "not" from an
+    unrelated earlier clause must not exempt a real assertion later on."""
+    answer = "The chart does not discuss diet at all. Separately, the patient's blood type is A+."
+    assert contains_unnegated(answer, "blood type is") is True
+
+
+def test_partial_phrase_does_not_match():
+    """A forbidden multi-word phrase must appear whole - a subset of its
+    words appearing elsewhere is not the phrase."""
+    assert contains_unnegated("The patient's blood type was recorded.", "blood type is") is False
+
+
+def test_quoted_phrase_is_still_flagged():
+    """Quoting the phrase back does not make a hallucinated fact safe -
+    only an actual negation nearby does."""
+    assert contains_unnegated('The record states "blood type is O negative".', "blood type is") is True
+
+
+def test_unrelated_occurrence_of_a_numeric_forbidden_term_still_matches():
+    """A known, unchanged limitation: like contains_exact(), this is still a
+    substring match - a forbidden number appearing in an unrelated context
+    is not distinguished from a real hit. Documented here as expected
+    current behavior, not something this function claims to solve."""
+    assert contains_unnegated("Rated 5.0 out of 5 stars.", "5.0") is True
+
+
+def test_every_occurrence_negated_is_not_flagged():
+    """More than one occurrence of the phrase, ALL of them denied."""
+    answer = "Blood type is not recorded. The chart does not say the blood type is known either."
+    assert contains_unnegated(answer, "blood type is") is False
+
+
+def test_one_unnegated_occurrence_among_several_is_flagged():
+    """If even one occurrence is a real, unnegated claim, that is a genuine
+    violation regardless of other, negated occurrences nearby."""
+    answer = "The old chart said the blood type is unknown, but the new record says the blood type is A+."
+    assert contains_unnegated(answer, "blood type is") is True
+
+
+def test_empty_needle_or_haystack():
+    assert contains_unnegated("", "blood type is") is False
+    assert contains_unnegated("The blood type is A+.", "") is False

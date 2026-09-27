@@ -119,6 +119,32 @@ def test_evaluate_turn_fails_on_forbidden_term_present():
     assert metrics["passed"] is False
 
 
+def test_evaluate_turn_does_not_flag_a_negated_forbidden_phrase():
+    """Regression: Q19's real forbidden_terms include "blood type is" (to
+    catch a hallucinated "The patient's blood type is A+"), but the CORRECT
+    refusal "The patient's blood type is not mentioned in the provided
+    evidence." contains that exact substring too - it must not be flagged."""
+    spec = {"required_facts": [], "required_sources": [], "forbidden_terms": ["blood type is"]}
+    result = {
+        "generated_ok": True,
+        "answer": "The patient's blood type is not mentioned in the provided evidence.",
+        "sources": [],
+    }
+    metrics = product_qa.evaluate_turn(spec, result, "unsupported")
+    assert metrics["forbidden_term_hit"] is False
+    assert metrics["forbidden_terms_found"] == []
+
+
+def test_evaluate_turn_still_flags_the_same_phrase_when_actually_asserted():
+    """The negation fix must not become a blanket exemption - the identical
+    phrase, genuinely asserted (no negation nearby), still fails."""
+    spec = {"required_facts": [], "required_sources": [], "forbidden_terms": ["blood type is"]}
+    result = {"generated_ok": True, "answer": "The patient's blood type is A+.", "sources": []}
+    metrics = product_qa.evaluate_turn(spec, result, "unsupported")
+    assert metrics["forbidden_term_hit"] is True
+    assert metrics["forbidden_terms_found"] == ["blood type is"]
+
+
 def test_evaluate_turn_fails_when_generation_failed():
     spec = {"required_facts": [], "required_sources": [], "forbidden_terms": []}
     result = {"generated_ok": False, "answer": None, "sources": []}
