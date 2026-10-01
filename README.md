@@ -1,8 +1,9 @@
 # RAG for Healthcare Documents
 
 A local, retrieval-augmented question-answering system for healthcare PDFs.
-Upload a document, ask questions about it, and get grounded answers with page
-citations - generated entirely on your own machine, with no cloud API calls.
+Upload a document, ask questions about it, and get grounded answers with the
+source pages listed under each one - generated entirely on your own machine,
+with no cloud API calls (after a one-time download of the two models).
 
 > This tool provides information grounded in uploaded documents and is not a
 > substitute for professional medical advice.
@@ -13,8 +14,12 @@ citations - generated entirely on your own machine, with no cloud API calls.
   it into overlapping word-window chunks, embeds each chunk, and indexes it.
 - **Answers questions grounded in your documents**: hybrid dense + keyword
   retrieval finds the most relevant chunks, which are passed to a local LLM
-  (Ollama) to generate a cited answer - the model is instructed to answer
-  only from the retrieved context, not its own general knowledge.
+  (Ollama) to generate an answer - the model is instructed to answer only
+  from the retrieved context, not its own general knowledge. Every answer
+  lists the pages it was given and shows the exact evidence chunks; the
+  model is also asked to cite evidence numbers inline, but `llama3.2:3b`
+  rarely does (2 of 46 measured answers), so the Sources list is the
+  provenance to rely on.
 - **Keeps documents isolated by default**: a question is answered using only
   the document currently in scope, so uploading a second document never lets
   evidence from a different one leak into an answer. Analysing several
@@ -51,7 +56,7 @@ citations - generated entirely on your own machine, with no cloud API calls.
                                       ▼
                     ┌─────────────────────────────────────────┐
                     │   Prompt builder → Ollama (llama3.2:3b)  │
-                    │   → grounded, cited answer               │
+                    │   → grounded answer + its sources        │
                     └─────────────────────────────────────────┘
 ```
 
@@ -101,10 +106,20 @@ pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-This starts the dashboard at `http://localhost:8501`. The embedding model
-and FAISS are imported lazily, so the page itself loads quickly even before
-Ollama or any document is ready; the embedding model loads on first
-upload/query.
+This starts the dashboard at `http://localhost:8501`, bound to this machine
+only. The embedding model and FAISS are imported lazily, so the page itself
+loads quickly even before Ollama or any document is ready. Once a document
+exists, the embedding model (a ~16 s torch import when cold) and the Ollama
+model are warmed up in the background so the first question does not pay
+for them. The embedding model is loaded from the local Hugging Face cache
+without contacting the Hub; only the very first run downloads it.
+
+On every start the app compares the SQLite chunk ids with the FAISS vector
+ids and repairs drift - a chunk with no vector (e.g. a process killed between
+the two writes) is re-embedded from its stored text, an orphan vector is
+removed, and an unreadable index is rebuilt from SQLite. Index writes from
+the app and from `scripts/ingest.py` are serialised by an OS file lock, so
+the CLI can run alongside the app.
 
 ## Using the app
 
@@ -175,7 +190,8 @@ length goes from 74-86 characters to 5.2-5.3 and its page count of chunks
 from 4 to 11.
 
 Scanned or image-only PDFs are still unsupported and still fail with an
-explicit error; OCR is deliberately not part of this pipeline.
+explicit error; OCR is deliberately not part of this pipeline. A damaged or
+truncated PDF that yields no text is reported as damaged, not as a scan.
 
 ## Retrieval: dense vs. hybrid
 
@@ -266,6 +282,15 @@ Known limitations, measured rather than assumed:
 - **Answers vary between runs.** Generation is sampled at a low but non-zero
   temperature, so the same question can produce different phrasing and
   occasionally a different (still grounded) choice of supporting detail.
+- **Inline citations are unreliable.** The model is asked to cite evidence
+  numbers but seldom does; the per-answer Sources list and evidence panel
+  are always present and are the reliable record of what an answer used.
+- **Ordinal references follow library order.** "The second document" means
+  the second in-scope document as listed in the library (upload order), not
+  the order a previous answer happened to discuss them in.
+- **A second question sent while one is still generating replaces it.**
+  Streamlit cancels the running turn, so the first question is dropped
+  rather than queued.
 - **Single-machine, single-user.** There is no authentication, no
   multi-user isolation, and no audit log. Do not expose it on a network you
   do not control.
@@ -373,11 +398,17 @@ the earlier version got wrong - see its module docstring).
   healthcare documents, balanced across five question-type categories):
   built into the separate research index described above. Its raw
   question/answer data is intentionally not committed (see "Private data"),
-  but the finished report and aggregate metrics are: see
-  [`research/REPORT.md`](research/REPORT.md) and
-  [`research/results/`](research/results/) for methodology and findings, and
-  `scripts/aggregate_runs.py` for how repeated runs are combined into a
-  paired Dense-vs-Hybrid statistical comparison (Wilcoxon signed-rank test).
+  but the finished reports and aggregate metrics are.
+  [`research/FINAL_REPORT.md`](research/FINAL_REPORT.md) is the current
+  report: counterbalanced dense vs. hybrid vs. production-path retrieval,
+  Holm-corrected paired tests, the chunk-level ground-truth audit,
+  end-to-end and safety results, and a claim-by-claim evidence table.
+  [`research/REPORT.md`](research/REPORT.md) is the earlier generated report
+  for publication runs 1-4, which predate the FTS5 Porter-stemming change
+  (its hybrid MRR/nDCG are lower than the current index's); it is kept as a
+  historical record. Re-run the retrieval benchmark with
+  `python research/counterbalanced_retrieval_benchmark.py` (writes a new
+  timestamped file under `research/results/`).
   Generation is not deterministic (temperature 0.1, no fixed seed), so any
   single run is one sample, not a stable estimate - this is why the
   benchmark is designed to be run multiple times and aggregated rather than
