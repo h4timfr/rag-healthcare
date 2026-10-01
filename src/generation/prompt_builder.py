@@ -205,6 +205,48 @@ FACTUAL_MULTI_COMPONENT_STYLE = (
 )
 
 
+# ANSWER_STYLES[COMPARISON] is written for comparing SEVERAL documents ("naming
+# the document it came from"). A comparison inside ONE document - e.g. an
+# initial vs a revised problem list on the same page - got that style and no
+# instruction to keep the two sections apart: the model merged the lists and
+# reported items present in both as added/removed. Controlled ablation (same
+# evidence, 5 runs): with this style both sections were reproduced under their
+# own headings 5/5, against confused lists under the multi-document style.
+# Used only by build_production_prompt (single-document path), and only when
+# the comparison names parts of the document (intent.compares_document_sections)
+# - a concept comparison keeps ANSWER_STYLES[COMPARISON]. The multi-document
+# comparison prompt is unchanged.
+SINGLE_DOCUMENT_COMPARISON_STYLE = (
+    "ANSWER STYLE\n"
+    "This question compares two sections of the SAME document. Find each section under its "
+    "own heading in the EVIDENCE and use only the items listed under that heading for it.\n"
+    "- An item that appears in both sections, even with a different number, is unchanged - "
+    "do not list it as added or removed.\n"
+    "- Report exactly what the question asks for, each as its own list.\n"
+    "- Margin notes and instructions to the reader are not list items.\n"
+    "- When an item appears in both lists but is renamed or rephrased, treat it as the same item "
+    "and explain the wording change rather than marking it as added or removed."
+)
+
+# Appended to the multi-part plan. Without it, multi-part answers named only the
+# first few items of a part: in a controlled ablation (same evidence, 5 runs)
+# a current-plan medication present in the evidence was listed 0/5 times
+# without this line and 5/5 with it.
+MULTI_PART_EXHAUSTIVE_RULE = (
+    "- For each part, include every item the EVIDENCE gives for it - do not stop at the first "
+    "few, and do not drop an item because it is unnamed or described only by its effect."
+)
+
+# Counterweight to the rule above for a medication question: with "include
+# every item", one answer in eight listed lab tests and a ventriculogram as
+# medications. Added only when the question asks for medications.
+MEDICATION_ONLY_RULE = (
+    "- When the question asks for medications, include only drugs or therapeutic agents. Do not "
+    "include tests, procedures, monitoring, diet, lifestyle recommendations, or diagnostic studies "
+    "unless explicitly requested."
+)
+
+
 def build_answer_plan(query: str, history: list[dict] | None = None) -> str:
     """Numbered plan for a multi-part question, e.g.
 
@@ -238,7 +280,9 @@ def build_answer_plan(query: str, history: list[dict] | None = None) -> str:
         "- Look for each part in the EVIDENCE on its own. The parts are "
         "independent; evidence for one is not evidence about another.\n"
         "- If one part genuinely is not in the EVIDENCE, say so for that part "
-        "only and still answer the others."
+        "only and still answer the others.\n"
+        f"{MULTI_PART_EXHAUSTIVE_RULE}"
+        + (f"\n{MEDICATION_ONLY_RULE}" if intent_module.asks_for_medications(query) else "")
     )
 
 
@@ -296,7 +340,9 @@ def build_answer_style(
         if plan:
             return plan
 
-    if resolved_intent == intent_module.FACTUAL and intent_module.is_enumeration_question(query):
+    if resolved_intent == intent_module.FACTUAL and (
+        intent_module.is_enumeration_question(query) or intent_module.requests_item_count(query)
+    ):
         return FACTUAL_MULTI_COMPONENT_STYLE
 
     return ANSWER_STYLES.get(resolved_intent, ANSWER_STYLES[intent_module.FACTUAL])
@@ -773,7 +819,10 @@ def build_production_prompt(
     else:
         context = build_context(chunks, target_scope=None)
     resolved_intent = intent_module.classify_intent(query, history=history)
-    answer_style = build_answer_style(query, resolved_intent, history=history)
+    if resolved_intent == intent_module.COMPARISON and intent_module.compares_document_sections(query):
+        answer_style = SINGLE_DOCUMENT_COMPARISON_STYLE
+    else:
+        answer_style = build_answer_style(query, resolved_intent, history=history)
 
     history_text = format_conversation_history(history)
     history_section = f"\n\nRECENT CONVERSATION:\n{history_text}" if history_text else ""

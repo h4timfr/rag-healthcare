@@ -33,12 +33,15 @@ from src.exceptions import (
     RagError,
 )
 from src.generation.intent import (
+    COMPARISON,
     FACTUAL,
     _COMPONENT_LIST,
     classify_intent,
+    compares_document_sections,
     decompose_question,
     is_enumeration_question,
     needs_document_balance,
+    requests_item_count,
     requests_multiple_components,
 )
 from src.generation.ollama_client import (
@@ -379,11 +382,17 @@ def resolve_num_predict(
     so an ordinary single-fact question keeps the smaller default budget.
     """
     multi_part = len(decompose_question(query, history=history)) > 1
-    enumeration = (
-        classify_intent(query, history=history) == FACTUAL
-        and is_enumeration_question(query)
+    intent = classify_intent(query, history=history)
+    enumeration = intent == FACTUAL and (is_enumeration_question(query) or requests_item_count(query))
+    # A single-document comparison of two parts of the document (e.g. an
+    # initial vs a revised list on one page) has to restate and diff two
+    # sections; at the default 256 tokens it was cut off mid-list 2 of 3
+    # times, and 0 of 5 at this budget. Same gate as the section-comparison
+    # answer style in prompt_builder.build_production_prompt.
+    single_document_comparison = (
+        not document_inventory and intent == COMPARISON and compares_document_sections(query)
     )
-    if document_inventory or multi_part or enumeration:
+    if document_inventory or multi_part or enumeration or single_document_comparison:
         return config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT
     return None
 

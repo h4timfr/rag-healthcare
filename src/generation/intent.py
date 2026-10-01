@@ -264,6 +264,57 @@ def is_enumeration_question(query: str) -> bool:
     return bool(_ENUMERATION_RANKING.search(q))
 
 
+# An explicit request for a number of items: "give 3-5 specific reasons",
+# "list two causes", "name 3 risk factors". A count word, an optional range,
+# up to two filler words, then a plural noun - the plural is what keeps
+# "give 1 reason" out. Generic wording only: no domain vocabulary.
+_COUNT_WORD = r"(?:\d+|two|three|four|five|six|seven|eight|nine|ten)"
+_ITEM_COUNT_REQUEST = re.compile(
+    r"\b(?:give|list|name|provide|identify|state|cite|mention|offer)\b[^.?!]{0,20}?\b"
+    + _COUNT_WORD
+    + r"(?:\s*(?:-|–|to|or)\s*"
+    + _COUNT_WORD
+    + r")?\s+(?:\w+\s+){0,2}?(\w+s)\b"
+)
+
+
+# A comparison between two PARTS of a document - "the initial problem list with
+# the revised problem list", "the two sections", "the first and second
+# versions" - as opposed to a comparison between two concepts ("how does
+# keyword retrieval differ from embedding retrieval?"). Only the former should
+# get the section-identity answer style: on a concept comparison that style
+# returned an empty answer in 2 of 3 runs, while the original style answered
+# 3/3.
+_DOCUMENT_PART_NOUN = re.compile(r"\b(?:lists?|sections?|versions?|tables?|drafts?|revisions?)\b")
+
+
+def compares_document_sections(query: str) -> bool:
+    """Whether a comparison question is about parts of the document itself."""
+    return bool(_DOCUMENT_PART_NOUN.search((query or "").lower()))
+
+
+_MEDICATION_REQUEST = re.compile(r"\b(?:medications?|medicines?|drugs?|prescriptions?|prescribed)\b")
+
+
+def asks_for_medications(query: str) -> bool:
+    """Whether the question asks for medications - a category whose answer
+    must not drift into tests, procedures or lifestyle advice."""
+    return bool(_MEDICATION_REQUEST.search((query or "").lower()))
+
+
+def requests_item_count(query: str) -> bool:
+    """Whether the question explicitly asks for a number of items.
+
+    Kept separate from is_enumeration_question() on purpose: that function
+    also drives the structured-question research diagnostic, and widening it
+    would change that study's flags. Only the production answer style and
+    output budget read this. Measured need: "... Give 3-5 specific reasons"
+    was classified FACTUAL, so its prompt said "in one or two sentences" and
+    2-3 of 5 answers came back as a single sentence."""
+    q = (query or "").strip().lower()
+    return bool(q) and bool(_ITEM_COUNT_REQUEST.search(q))
+
+
 # First-person requests for advice about the user's own (or a dependent's)
 # health: "should I ...", "for me/my ...", "my child ...", "I take ...".
 # Document questions are phrased about the patients in the documents, so
