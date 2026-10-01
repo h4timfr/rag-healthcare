@@ -319,6 +319,10 @@ def test_rebuild_from_sqlite_produces_vectors_that_actually_retrieve_correctly(s
 
 
 def test_repair_of_corrupted_index_with_no_sqlite_chunks_produces_an_empty_valid_index(store_paths):
+    """With no SQLite rows, every vector the unreadable file could hold is
+    an orphan by definition, so removing it loses nothing. Leaving it in
+    place left the app permanently unable to ingest: every upload's
+    load_or_create() re-raised the same read error."""
     db_path, faiss_path = store_paths
     MetadataStore(db_path).initialize()
     with open(faiss_path, "wb") as f:
@@ -326,8 +330,65 @@ def test_repair_of_corrupted_index_with_no_sqlite_chunks_produces_an_empty_valid
 
     repaired = repair()
 
-    assert repaired.faiss_corrupted  # nothing to rebuild FROM - file was left untouched
+    assert repaired.is_consistent
+    assert not repaired.faiss_corrupted
     assert repaired.total_sqlite_chunks == 0
+    FaissIndex(config.EMBEDDING_DIM, faiss_path).load_or_create()  # the next ingest can proceed
+
+
+def test_repair_of_corrupted_index_with_no_database_at_all_is_also_cleared(store_paths):
+    _db_path, faiss_path = store_paths
+    with open(faiss_path, "wb") as f:
+        f.write(b"garbage")
+
+    assert repair().is_consistent
+
+
+# --- concurrent writer ------------------------------------------------------------
+
+
+def test_repair_does_not_duplicate_a_chunk_a_concurrent_ingest_is_still_writing(store_paths, monkeypatch):
+    """Ingest commits SQLite rows, then adds+saves their vectors, all under
+    the index lock. A repair() whose check ran outside that lock saw the
+    in-flight chunk as dense-invisible, waited for the lock, and then added
+    it a second time after the ingest had already saved it - measured: one
+    chunk_id ending up with two FAISS vectors."""
+    import threading
+    import time
+
+    from src.retrieval import index_consistency
+    from src.retrieval.faiss_index import cross_process_index_lock
+
+    monkeypatch.setattr(index_consistency, "embed_texts", lambda texts: _unit_vectors(len(texts), seed=7))
+    db_path, faiss_path = store_paths
+    _seed_faiss(faiss_path, _seed_sqlite(db_path, 2))
+
+    in_window, proceed = threading.Event(), threading.Event()
+
+    def ingest():
+        with cross_process_index_lock(faiss_path):
+            new_ids = MetadataStore(db_path).insert_chunks("doc2", "b.pdf", [(1, "late chunk")])
+            in_window.set()
+            proceed.wait(10)
+            index = FaissIndex(config.EMBEDDING_DIM, faiss_path)
+            index.load_or_create()
+            index.add(_unit_vectors(1, seed=3), np.array(new_ids, dtype="int64"))
+            index.save()
+
+    writer = threading.Thread(target=ingest)
+    writer.start()
+    assert in_window.wait(10)
+    repairer = threading.Thread(target=repair)
+    repairer.start()
+    time.sleep(0.5)  # let repair() reach the lock while the ingest is mid-write
+    proceed.set()
+    writer.join(10)
+    repairer.join(10)
+
+    report = check_consistency()
+    assert report.duplicate_faiss_ids == []
+    assert report.is_consistent
+    assert report.total_faiss_vectors == report.total_sqlite_chunks == 3
 
 
 # --- startup integration -----------------------------------------------------------

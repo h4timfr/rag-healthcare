@@ -1434,9 +1434,8 @@ def main() -> None:
             )
         else:
             st.warning(
-                "The document index needed repair on startup. Some vectors could not "
-                "be verified as normalized - retrieval scores for affected chunks may "
-                "be less reliable."
+                "The document index could not be fully repaired on startup. Dense "
+                "retrieval may be incomplete until the index is rebuilt."
             )
 
     st.session_state.setdefault("chat_history", [])

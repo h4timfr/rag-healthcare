@@ -246,3 +246,45 @@ def test_cross_process_ingestion_is_serialized(isolated_index):
     assert len(faiss_ids) == len(set(faiss_ids))
     assert set(faiss_ids) == _sqlite_ids()
     assert len(_sqlite_ids()) == 6  # both documents' 3 chunks each, nothing lost
+
+
+_LOCK_HOLDER = """
+import sys, time
+sys.path.insert(0, {project_root!r})
+from src.retrieval.faiss_index import cross_process_index_lock
+with cross_process_index_lock({faiss_path!r}):
+    print("held", flush=True)
+    time.sleep({hold_seconds})
+"""
+
+
+def test_cross_process_lock_waits_out_a_long_holder_instead_of_raising(isolated_index):
+    """Windows' msvcrt LK_LOCK gives up after ~10 one-second retries and
+    raises OSError(EDEADLOCK) - measured at 9.1s - so a writer queued behind
+    a long critical section (a startup rebuild re-embeds every chunk under
+    the lock) failed instead of blocking as documented."""
+    import subprocess
+    import sys
+
+    from src.retrieval.faiss_index import cross_process_index_lock
+
+    hold_seconds = 12
+    root = str(Path(__file__).resolve().parents[1])
+    holder_script = isolated_index / "_holder.py"
+    holder_script.write_text(
+        _LOCK_HOLDER.format(
+            project_root=root, faiss_path=str(config.FAISS_INDEX_PATH), hold_seconds=hold_seconds
+        ),
+        encoding="utf-8",
+    )
+    holder = subprocess.Popen(
+        [sys.executable, str(holder_script)], stdout=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True
+    )
+    try:
+        assert holder.stdout.readline().strip() == "held"
+        start = time.perf_counter()
+        with cross_process_index_lock(config.FAISS_INDEX_PATH):
+            waited = time.perf_counter() - start
+        assert waited > hold_seconds - 3  # it genuinely waited for the holder
+    finally:
+        assert holder.wait(timeout=30) == 0

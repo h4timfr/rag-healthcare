@@ -207,14 +207,16 @@ def repair(
     faiss_index_path = faiss_index_path or config.FAISS_INDEX_PATH
     dim = dim if dim is not None else config.EMBEDDING_DIM
 
-    before = check_consistency(db_path, faiss_index_path, dim, verify_normalization=False)
+    # The snapshot is taken under the writer lock: an ingest between its
+    # SQLite commit and its FAISS save looks exactly like a dense-invisible
+    # chunk, and acting on a snapshot taken before that ingest finished
+    # would add its vectors a second time.
+    with cross_process_index_lock(faiss_index_path):
+        before = check_consistency(db_path, faiss_index_path, dim, verify_normalization=False)
 
-    if before.faiss_corrupted:
-        _rebuild_from_sqlite(db_path, faiss_index_path, dim)
-        return check_consistency(db_path, faiss_index_path, dim)
-
-    if before.dense_invisible_chunk_ids or before.orphan_faiss_ids or before.duplicate_faiss_ids:
-        with cross_process_index_lock(faiss_index_path):
+        if before.faiss_corrupted:
+            _rebuild_from_sqlite(db_path, faiss_index_path, dim)
+        elif before.dense_invisible_chunk_ids or before.orphan_faiss_ids or before.duplicate_faiss_ids:
             index = FaissIndex(dim, faiss_index_path)
             index.load_or_create()
 
@@ -241,7 +243,7 @@ def repair(
             if to_remove or needs_embedding:
                 index.save()
 
-    return check_consistency(db_path, faiss_index_path, dim)
+        return check_consistency(db_path, faiss_index_path, dim)
 
 
 def _rebuild_from_sqlite(db_path: str, faiss_index_path: str, dim: int) -> None:
@@ -249,27 +251,29 @@ def _rebuild_from_sqlite(db_path: str, faiss_index_path: str, dim: int) -> None:
     index, replacing a corrupt one. SQLite is untouched and is the sole
     source of truth for this - a chunk's text and metadata are never
     regenerated, only its vector."""
-    if not Path(db_path).exists():
-        return
-
-    conn = sqlite3.connect(db_path)
-    try:
-        rows = conn.execute("SELECT chunk_id, text FROM chunks ORDER BY chunk_id").fetchall()
-    finally:
-        conn.close()
-    if not rows:
-        return
+    rows = []
+    if Path(db_path).exists():
+        conn = sqlite3.connect(db_path)
+        try:
+            if conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='chunks'"
+            ).fetchone():
+                rows = conn.execute("SELECT chunk_id, text FROM chunks ORDER BY chunk_id").fetchall()
+        finally:
+            conn.close()
 
     with cross_process_index_lock(faiss_index_path):
         # The corrupt file is already confirmed unreadable (that's why we're
         # here) and unsalvageable - nothing in repair() ever reads chunk
         # vectors back out of FAISS, only chunk_ids and TEXT out of SQLite,
         # so there is nothing left to lose by removing it before creating a
-        # fresh index in its place. load_or_create() itself does not do
-        # this: it calls faiss.read_index() on any EXISTING path regardless
-        # of whether it's readable, so handing it a corrupt file re-raises
-        # the same error this function exists to recover from.
+        # fresh index in its place. With no SQLite rows every vector it
+        # could hold is an orphan, so it is removed then too: left in place,
+        # every later ingest's load_or_create() - which calls
+        # faiss.read_index() on any EXISTING path - re-raises the read error.
         Path(faiss_index_path).unlink(missing_ok=True)
+        if not rows:
+            return
         index = FaissIndex(dim, faiss_index_path)
         index.load_or_create()
         ids = [r[0] for r in rows]

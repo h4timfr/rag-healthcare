@@ -11,6 +11,7 @@ document was uploaded or queried.
 import contextlib
 import os
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -57,11 +58,26 @@ def _open_lock_file(index_path: str):
     return fh
 
 
+_LOCK_POLL_SECONDS = 0.05
+
+
 def _os_lock(fh) -> None:
     if os.name == "nt":
+        import errno
         import msvcrt
 
-        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        # Not LK_LOCK: it retries only ~10 times at 1s intervals and then
+        # raises OSError(EDEADLOCK), so a writer queued behind a long
+        # critical section would fail rather than block.
+        while True:
+            fh.seek(0)
+            try:
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EDEADLK):
+                    raise
+            time.sleep(_LOCK_POLL_SECONDS)
     else:
         import fcntl
 
