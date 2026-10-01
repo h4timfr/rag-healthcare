@@ -31,10 +31,30 @@ This produces THREE explicitly separate evaluation labels (do not conflate):
                        scoped dense baseline exists to compare B_scoped_hybrid
                        against; production itself never calls dense-only.
 
-"C. End-to-end production evaluation" (generation included) is intentionally
-NOT re-implemented here - that is what scripts/run_product_qa.py already is;
-re-running it is part of Phase 9's regression, not this retrieval-only
-benchmark.
+  C_production         app.retrieve_and_build_prompt() exactly as a
+                       single-document chat turn calls it (scoped to the
+                       question's document, default top_k): intent
+                       classification, 5 -> 8 widening for explicit
+                       three-component lists, per-part multi-part retrieval
+                       and the presentation reorder are all included, so
+                       metrics are computed on the list in the order the
+                       model actually reads it. Recall is reported both on
+                       its first 5 chunks (recall) and on everything it
+                       returned (recall_all_returned). Latency here includes
+                       prompt construction. Generation is NOT included.
+
+Measurement order rotates over the three methods as a cyclic Latin square
+(question index mod 3), so each method is measured first, second and third
+equally often across the 45 questions.
+
+Statistics: each paired comparison is a two-sided Wilcoxon signed-rank test
+over the questions whose paired difference is nonzero (zero differences
+dropped), with a matched-pairs rank-biserial correlation as effect size and
+win/loss/tie counts. Holm-Bonferroni correction is applied across every
+metric comparison in the run (latency is reported descriptively only).
+
+End-to-end evaluation with generation is intentionally NOT re-implemented
+here - that is scripts/run_product_qa.py.
 
 Repeated LATENCY_REPS times per question per method for a distribution
 (mean/median/stdev/p95), not just a mean. Recall/MRR/nDCG/term-coverage are
@@ -136,84 +156,211 @@ def time_retrieval(fn, reps: int) -> tuple[list[dict], dict]:
     return chunks, stats
 
 
+def production_retrieve(query: str, document_id: str) -> list[dict]:
+    import app
+
+    chunks, _prompt = app.retrieve_and_build_prompt(query, top_k=config.TOP_K, document_id=document_id)
+    return chunks
+
+
 def warm_up():
-    """Both methods, symmetrically, before any timed measurement."""
+    """Every method, before any timed measurement."""
     dense_retrieve_global("warm up query", top_k=1)
     retrieve_hybrid("warm up query", top_k=1)
+    production_retrieve("warm up query", None)
 
 
 def paired_test(a: list[float], b: list[float]) -> dict:
+    """b - a. Zero differences are dropped before the Wilcoxon test (the
+    'wilcox' zero_method). rank_biserial is (W+ - W-) / (W+ + W-) over the
+    ranks of the nonzero |differences|: +1 means every nonzero difference
+    favours b."""
+    from scipy.stats import rankdata
+
     diffs = [y - x for x, y in zip(a, b)]
     nonzero = [d for d in diffs if d != 0]
+    result = {
+        "n_pairs": len(diffs),
+        "mean_diff": mean(diffs),
+        "median_diff": median(diffs),
+        "wins_b": sum(d > 0 for d in diffs),
+        "wins_a": sum(d < 0 for d in diffs),
+        "ties": sum(d == 0 for d in diffs),
+        "n_nonzero": len(nonzero),
+    }
     if not nonzero:
-        return {"mean_diff": 0.0, "n_nonzero": 0, "p_value": None}
-    stat, p = wilcoxon(nonzero)
-    return {"mean_diff": mean(diffs), "n_nonzero": len(nonzero), "statistic": float(stat), "p_value": float(p)}
+        return {**result, "statistic": None, "p_value": None, "rank_biserial": 0.0}
+    ranks = rankdata([abs(d) for d in nonzero])
+    w_plus = sum(r for r, d in zip(ranks, nonzero) if d > 0)
+    w_minus = sum(r for r, d in zip(ranks, nonzero) if d < 0)
+    res = wilcoxon(nonzero)
+    return {
+        **result,
+        "statistic": float(res.statistic),
+        "p_value": float(res.pvalue),
+        "rank_biserial": float((w_plus - w_minus) / (w_plus + w_minus)),
+    }
+
+
+def holm(p_values: dict) -> dict:
+    """Holm-Bonferroni adjusted p-values for {name: p}; None entries skipped."""
+    named = sorted(((p, n) for n, p in p_values.items() if p is not None))
+    m = len(named)
+    adjusted, running = {}, 0.0
+    for i, (p, name) in enumerate(named):
+        running = max(running, min(1.0, (m - i) * p))
+        adjusted[name] = running
+    return adjusted
+
+
+def environment() -> dict:
+    import platform
+    from importlib.metadata import version
+
+    import requests
+
+    env = {
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "processor": platform.processor(),
+        "packages": {
+            p: version(p) for p in ("faiss-cpu", "sentence-transformers", "torch", "numpy", "scipy", "pymupdf")
+        },
+        "embedding_model": config.EMBEDDING_MODEL_NAME,
+        "embedding_dim": config.EMBEDDING_DIM,
+        "chunk_size_words": config.CHUNK_SIZE_WORDS,
+        "chunk_overlap_words": config.CHUNK_OVERLAP_WORDS,
+        "top_k": config.TOP_K,
+        "ollama_model": config.OLLAMA_MODEL,
+    }
+    import inspect
+    import re
+
+    defaults = inspect.signature(retrieve_hybrid).parameters
+    env["candidate_k"] = defaults["candidate_k"].default
+    env["rrf_k"] = defaults["rrf_k"].default
+    source = inspect.getsource(retrieve_hybrid)
+    for name in ("dense_weight", "keyword_weight"):
+        found = re.search(rf"{name} = ([0-9.]+)", source)
+        env[name] = float(found.group(1)) if found else None
+    try:
+        import torch
+
+        env["cuda_available"] = torch.cuda.is_available()
+    except Exception:  # noqa: BLE001 - informational only
+        pass
+    try:
+        env["ollama_version"] = requests.get(f"{config.OLLAMA_HOST}/api/version", timeout=3).json().get("version")
+    except Exception:  # noqa: BLE001 - retrieval-only run; Ollama is not required
+        env["ollama_version"] = None
+    return env
+
+
+METHODS = ("dense", "hybrid", "production")
+METRICS = ("recall", "mrr", "ndcg", "term_coverage")
+COMPARISONS = (
+    ("A_global", "A_global_dense", "A_global_hybrid"),
+    ("B_scoped", "B_scoped_dense", "B_scoped_hybrid"),
+    ("C_vs_B", "B_scoped_hybrid", "C_production"),
+)
 
 
 def main():
     config.DB_PATH = RESEARCH_DB
     config.FAISS_INDEX_PATH = RESEARCH_FAISS
     items = json.loads((ROOT / "data" / "healthcare_eval_questions.json").read_text(encoding="utf-8"))
+    started = time.perf_counter()
 
-    print("Warming up dense and hybrid paths symmetrically before any timed question...")
+    print("Warming up every method before any timed question...")
     warm_up()
 
     per_question = []
     for i, item in enumerate(items):
-        dense_first = (i % 2 == 0)  # counterbalanced: alternates by question index, deterministic
-        order = ["dense", "hybrid"] if dense_first else ["hybrid", "dense"]
+        shift = i % len(METHODS)
+        order = list(METHODS[shift:] + METHODS[:shift])
 
         row = {"id": item["id"], "category": item["category"], "order": order}
+        q, doc = item["question"], item["document_id"]
 
         for method in order:
+            if method == "production":
+                chunks, timing = time_retrieval(lambda: production_retrieve(q, doc), LATENCY_REPS)
+                row["C_production"] = {
+                    **score_chunks(chunks[:TOP_K], item),
+                    "recall_all_returned": document_aware_page_recall(chunks, item["expected_pages"], item["source"]),
+                    "returned": len(chunks),
+                    "latency": timing,
+                }
+                continue
+
             # --- A: global (no document_id) ---
-            fn = (lambda m=method: dense_retrieve_global(item["question"], top_k=TOP_K)) if method == "dense" \
-                else (lambda: retrieve_hybrid(item["question"], top_k=TOP_K))
+            fn = (lambda: dense_retrieve_global(q, top_k=TOP_K)) if method == "dense" \
+                else (lambda: retrieve_hybrid(q, top_k=TOP_K))
             chunks, timing = time_retrieval(fn, LATENCY_REPS)
             row[f"A_global_{method}"] = {**score_chunks(chunks, item), "latency": timing}
 
-            # --- B: production-scoped (this question's own document) ---
-            fn = (lambda: dense_retrieve_scoped(item["question"], item["document_id"], top_k=TOP_K)) if method == "dense" \
-                else (lambda: retrieve_hybrid(item["question"], top_k=TOP_K, document_id=item["document_id"]))
+            # --- B: scoped to this question's own document ---
+            fn = (lambda: dense_retrieve_scoped(q, doc, top_k=TOP_K)) if method == "dense" \
+                else (lambda: retrieve_hybrid(q, top_k=TOP_K, document_id=doc))
             chunks, timing = time_retrieval(fn, LATENCY_REPS)
             row[f"B_scoped_{method}"] = {**score_chunks(chunks, item), "latency": timing}
 
         per_question.append(row)
-        print(f"[{i + 1}/{len(items)}] {item['id']} order={order}")
+        print(f"[{i + 1}/{len(items)}] {item['id']} order={order} elapsed={time.perf_counter() - started:.0f}s", flush=True)
 
-    summary = {}
-    for label in ("A_global", "B_scoped"):
-        summary[label] = {}
-        for metric in ("recall", "mrr", "ndcg", "term_coverage"):
-            d = [r[f"{label}_dense"][metric] for r in per_question]
-            h = [r[f"{label}_hybrid"][metric] for r in per_question]
-            summary[label][metric] = {
-                "dense_mean": mean(d), "hybrid_mean": mean(h),
-                "paired_wilcoxon": paired_test(d, h),
-            }
-        for method in ("dense", "hybrid"):
-            lat = [r[f"{label}_{method}"]["latency"]["mean_ms"] for r in per_question]
-            summary[label][f"{method}_latency_ms"] = {
-                "mean": mean(lat), "median": median(lat), "stdev": stdev(lat), "p95": sorted(lat)[int(0.95 * (len(lat) - 1))],
-            }
+    labels = ("A_global_dense", "A_global_hybrid", "B_scoped_dense", "B_scoped_hybrid", "C_production")
+    summary = {"means": {}, "latency_ms": {}, "comparisons": {}}
+    for label in labels:
+        summary["means"][label] = {m: mean(r[label][m] for r in per_question) for m in METRICS}
+        lat = [r[label]["latency"]["mean_ms"] for r in per_question]
+        summary["latency_ms"][label] = {
+            "mean": mean(lat), "median": median(lat), "stdev": stdev(lat), "p95": sorted(lat)[int(0.95 * (len(lat) - 1))],
+        }
+    summary["means"]["C_production"]["recall_all_returned"] = mean(r["C_production"]["recall_all_returned"] for r in per_question)
+    summary["means"]["C_production"]["mean_chunks_returned"] = mean(r["C_production"]["returned"] for r in per_question)
+
+    raw_p = {}
+    for name, a, b in COMPARISONS:
+        for metric in METRICS:
+            test = paired_test([r[a][metric] for r in per_question], [r[b][metric] for r in per_question])
+            summary["comparisons"][f"{name}:{metric}"] = {"a": a, "b": b, **test}
+            raw_p[f"{name}:{metric}"] = test["p_value"]
+    for key, adj in holm(raw_p).items():
+        summary["comparisons"][key]["p_holm"] = adj
+
+    categories = sorted({r["category"] for r in per_question})
+    summary["per_category"] = {
+        cat: {
+            "n": sum(r["category"] == cat for r in per_question),
+            **{
+                label: {m: mean(r[label][m] for r in per_question if r["category"] == cat) for m in METRICS}
+                for label in labels
+            },
+        }
+        for cat in categories
+    }
 
     non_deterministic = [
-        (r["id"], label, method)
+        (r["id"], label)
         for r in per_question
-        for label in ("A_global", "B_scoped")
-        for method in ("dense", "hybrid")
-        if not r[f"{label}_{method}"]["latency"]["deterministic_across_reps"]
+        for label in labels
+        if not r[label]["latency"]["deterministic_across_reps"]
     ]
 
     payload = {
         "meta": {
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "runtime_seconds": time.perf_counter() - started,
             "top_k": TOP_K,
             "latency_reps": LATENCY_REPS,
-            "counterbalancing": "even question index -> dense measured first; odd -> hybrid first",
+            "counterbalancing": "cyclic Latin square over (dense, hybrid, production) by question index mod 3",
+            "statistics": "two-sided Wilcoxon signed-rank on nonzero paired differences; "
+                          "matched-pairs rank-biserial effect size; Holm correction across all metric comparisons",
+            "relevance": "document-aware page-level relevance from expected_pages (see research/chunk_evidence_audit.py "
+                         "for the chunk-level audit of the same labels)",
             "question_count": len(items),
             "non_deterministic_repeats": non_deterministic,
+            "environment": environment(),
         },
         "summary": summary,
         "per_question": per_question,
@@ -226,17 +373,18 @@ def main():
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     print(f"\nnon-deterministic repeats found: {len(non_deterministic)} {non_deterministic}")
-    print("\n=== SUMMARY ===")
-    for label in ("A_global", "B_scoped"):
-        print(f"\n{label}:")
-        for metric in ("recall", "mrr", "ndcg", "term_coverage"):
-            s = summary[label][metric]
-            print(f"  {metric:<14} dense={s['dense_mean']:.3f} hybrid={s['hybrid_mean']:.3f} "
-                  f"wilcoxon_p={s['paired_wilcoxon']['p_value']}")
-        for method in ("dense", "hybrid"):
-            s = summary[label][f"{method}_latency_ms"]
-            print(f"  {method}_latency_ms  mean={s['mean']:.2f} median={s['median']:.2f} "
-                  f"stdev={s['stdev']:.2f} p95={s['p95']:.2f}")
+    print("\n=== MEANS ===")
+    for label in labels:
+        s = summary["means"][label]
+        lat = summary["latency_ms"][label]
+        print(f"  {label:<16} " + " ".join(f"{m}={s[m]:.3f}" for m in METRICS)
+              + f"  latency median={lat['median']:.1f}ms mean={lat['mean']:.1f}ms")
+    print("\n=== PAIRED COMPARISONS (b - a) ===")
+    for key, c in summary["comparisons"].items():
+        p = "n/a" if c["p_value"] is None else f"{c['p_value']:.4f}"
+        ph = "n/a" if c.get("p_holm") is None else f"{c['p_holm']:.4f}"
+        print(f"  {key:<24} mean_diff={c['mean_diff']:+.3f} wins b/a/ties={c['wins_b']}/{c['wins_a']}/{c['ties']} "
+              f"r_rb={c['rank_biserial']:+.2f} p={p} p_holm={ph}")
 
     print(f"\nwritten to {out_path}")
 

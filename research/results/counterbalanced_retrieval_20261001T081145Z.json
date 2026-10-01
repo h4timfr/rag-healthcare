@@ -1,0 +1,5900 @@
+{
+  "meta": {
+    "generated_at_utc": "2026-10-01T08:11:45.477129+00:00",
+    "runtime_seconds": 52.92787800001679,
+    "top_k": 5,
+    "latency_reps": 5,
+    "counterbalancing": "cyclic Latin square over (dense, hybrid, production) by question index mod 3",
+    "statistics": "two-sided Wilcoxon signed-rank on nonzero paired differences; matched-pairs rank-biserial effect size; Holm correction across all metric comparisons",
+    "relevance": "document-aware page-level relevance from expected_pages (see research/chunk_evidence_audit.py for the chunk-level audit of the same labels)",
+    "question_count": 45,
+    "non_deterministic_repeats": [],
+    "environment": {
+      "python": "3.13.7",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "processor": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+      "packages": {
+        "faiss-cpu": "1.15.0",
+        "sentence-transformers": "6.0.1",
+        "torch": "2.14.0",
+        "numpy": "2.5.3",
+        "scipy": "1.18.1",
+        "pymupdf": "1.28.2"
+      },
+      "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+      "embedding_dim": 384,
+      "chunk_size_words": 200,
+      "chunk_overlap_words": 40,
+      "top_k": 5,
+      "ollama_model": "llama3.2:3b",
+      "candidate_k": 10,
+      "rrf_k": 60,
+      "dense_weight": 2.0,
+      "keyword_weight": 1.0,
+      "cuda_available": false,
+      "ollama_version": "0.35.0"
+    }
+  },
+  "summary": {
+    "means": {
+      "A_global_dense": {
+        "recall": 0.9111111111111111,
+        "mrr": 0.6922222222222222,
+        "ndcg": 0.7462608260598519,
+        "term_coverage": 0.9111111111111111
+      },
+      "A_global_hybrid": {
+        "recall": 0.9333333333333333,
+        "mrr": 0.8092592592592592,
+        "ndcg": 0.8403499708556891,
+        "term_coverage": 0.9333333333333333
+      },
+      "B_scoped_dense": {
+        "recall": 0.9333333333333333,
+        "mrr": 0.7396296296296296,
+        "ndcg": 0.7874005524070196,
+        "term_coverage": 0.9333333333333333
+      },
+      "B_scoped_hybrid": {
+        "recall": 0.9333333333333333,
+        "mrr": 0.825925925925926,
+        "ndcg": 0.8530016028985026,
+        "term_coverage": 0.9333333333333333
+      },
+      "C_production": {
+        "recall": 0.9333333333333333,
+        "mrr": 0.8296296296296296,
+        "ndcg": 0.8560826447619073,
+        "term_coverage": 0.9333333333333333,
+        "recall_all_returned": 0.9333333333333333,
+        "mean_chunks_returned": 4.933333333333334
+      }
+    },
+    "latency_ms": {
+      "A_global_dense": {
+        "mean": 26.26176799996756,
+        "median": 26.01332000340335,
+        "stdev": 1.372252900904013,
+        "p95": 28.591360000427812
+      },
+      "A_global_hybrid": {
+        "mean": 28.19836355590572,
+        "median": 28.226980002364144,
+        "stdev": 1.598471315184091,
+        "p95": 30.453500000294298
+      },
+      "B_scoped_dense": {
+        "mean": 28.484846223145723,
+        "median": 28.332859999500215,
+        "stdev": 1.2999924051202143,
+        "p95": 30.853559996467084
+      },
+      "B_scoped_hybrid": {
+        "mean": 31.784349778253173,
+        "median": 31.318440003087744,
+        "stdev": 2.7553646448380347,
+        "p95": 34.2318199982401
+      },
+      "C_production": {
+        "mean": 42.174459556117654,
+        "median": 40.78585999086499,
+        "stdev": 6.79157996710719,
+        "p95": 53.53455999866128
+      }
+    },
+    "comparisons": {
+      "A_global:recall": {
+        "a": "A_global_dense",
+        "b": "A_global_hybrid",
+        "n_pairs": 45,
+        "mean_diff": 0.022222222222222223,
+        "median_diff": 0.0,
+        "wins_b": 1,
+        "wins_a": 0,
+        "ties": 44,
+        "n_nonzero": 1,
+        "statistic": 0.0,
+        "p_value": 1.0,
+        "rank_biserial": 1.0,
+        "p_holm": 1.0
+      },
+      "A_global:mrr": {
+        "a": "A_global_dense",
+        "b": "A_global_hybrid",
+        "n_pairs": 45,
+        "mean_diff": 0.11703703703703704,
+        "median_diff": 0.0,
+        "wins_b": 13,
+        "wins_a": 0,
+        "ties": 32,
+        "n_nonzero": 13,
+        "statistic": 0.0,
+        "p_value": 0.000244140625,
+        "rank_biserial": 1.0,
+        "p_holm": 0.00244140625
+      },
+      "A_global:ndcg": {
+        "a": "A_global_dense",
+        "b": "A_global_hybrid",
+        "n_pairs": 45,
+        "mean_diff": 0.09408914479583717,
+        "median_diff": 0.0,
+        "wins_b": 13,
+        "wins_a": 0,
+        "ties": 32,
+        "n_nonzero": 13,
+        "statistic": 0.0,
+        "p_value": 0.000244140625,
+        "rank_biserial": 1.0,
+        "p_holm": 0.00244140625
+      },
+      "A_global:term_coverage": {
+        "a": "A_global_dense",
+        "b": "A_global_hybrid",
+        "n_pairs": 45,
+        "mean_diff": 0.022222222222222223,
+        "median_diff": 0.0,
+        "wins_b": 1,
+        "wins_a": 0,
+        "ties": 44,
+        "n_nonzero": 1,
+        "statistic": 0.0,
+        "p_value": 1.0,
+        "rank_biserial": 1.0,
+        "p_holm": 1.0
+      },
+      "B_scoped:recall": {
+        "a": "B_scoped_dense",
+        "b": "B_scoped_hybrid",
+        "n_pairs": 45,
+        "mean_diff": 0.0,
+        "median_diff": 0.0,
+        "wins_b": 1,
+        "wins_a": 1,
+        "ties": 43,
+        "n_nonzero": 2,
+        "statistic": 1.5,
+        "p_value": 1.0,
+        "rank_biserial": 0.0,
+        "p_holm": 1.0
+      },
+      "B_scoped:mrr": {
+        "a": "B_scoped_dense",
+        "b": "B_scoped_hybrid",
+        "n_pairs": 45,
+        "mean_diff": 0.0862962962962963,
+        "median_diff": 0.0,
+        "wins_b": 11,
+        "wins_a": 2,
+        "ties": 32,
+        "n_nonzero": 13,
+        "statistic": 13.0,
+        "p_value": 0.02099609375,
+        "rank_biserial": 0.7142857142857143,
+        "p_holm": 0.16796875
+      },
+      "B_scoped:ndcg": {
+        "a": "B_scoped_dense",
+        "b": "B_scoped_hybrid",
+        "n_pairs": 45,
+        "mean_diff": 0.06560105049148304,
+        "median_diff": 0.0,
+        "wins_b": 11,
+        "wins_a": 2,
+        "ties": 32,
+        "n_nonzero": 13,
+        "statistic": 14.0,
+        "p_value": 0.025634765625,
+        "rank_biserial": 0.6923076923076923,
+        "p_holm": 0.179443359375
+      },
+      "B_scoped:term_coverage": {
+        "a": "B_scoped_dense",
+        "b": "B_scoped_hybrid",
+        "n_pairs": 45,
+        "mean_diff": 0.0,
+        "median_diff": 0.0,
+        "wins_b": 1,
+        "wins_a": 1,
+        "ties": 43,
+        "n_nonzero": 2,
+        "statistic": 1.5,
+        "p_value": 1.0,
+        "rank_biserial": 0.0,
+        "p_holm": 1.0
+      },
+      "C_vs_B:recall": {
+        "a": "B_scoped_hybrid",
+        "b": "C_production",
+        "n_pairs": 45,
+        "mean_diff": 0.0,
+        "median_diff": 0.0,
+        "wins_b": 0,
+        "wins_a": 0,
+        "ties": 45,
+        "n_nonzero": 0,
+        "statistic": null,
+        "p_value": null,
+        "rank_biserial": 0.0
+      },
+      "C_vs_B:mrr": {
+        "a": "B_scoped_hybrid",
+        "b": "C_production",
+        "n_pairs": 45,
+        "mean_diff": 0.003703703703703703,
+        "median_diff": 0.0,
+        "wins_b": 2,
+        "wins_a": 0,
+        "ties": 43,
+        "n_nonzero": 2,
+        "statistic": 0.0,
+        "p_value": 0.5,
+        "rank_biserial": 1.0,
+        "p_holm": 1.0
+      },
+      "C_vs_B:ndcg": {
+        "a": "B_scoped_hybrid",
+        "b": "C_production",
+        "n_pairs": 45,
+        "mean_diff": 0.003081041863404753,
+        "median_diff": 0.0,
+        "wins_b": 2,
+        "wins_a": 0,
+        "ties": 43,
+        "n_nonzero": 2,
+        "statistic": 0.0,
+        "p_value": 0.5,
+        "rank_biserial": 1.0,
+        "p_holm": 1.0
+      },
+      "C_vs_B:term_coverage": {
+        "a": "B_scoped_hybrid",
+        "b": "C_production",
+        "n_pairs": 45,
+        "mean_diff": 0.0,
+        "median_diff": 0.0,
+        "wins_b": 0,
+        "wins_a": 0,
+        "ties": 45,
+        "n_nonzero": 0,
+        "statistic": null,
+        "p_value": null,
+        "rank_biserial": 0.0
+      }
+    },
+    "per_category": {
+      "factual_extraction": {
+        "n": 9,
+        "A_global_dense": {
+          "recall": 1.0,
+          "mrr": 0.7444444444444445,
+          "ndcg": 0.8053562137090364,
+          "term_coverage": 0.8888888888888888
+        },
+        "A_global_hybrid": {
+          "recall": 1.0,
+          "mrr": 0.7685185185185185,
+          "ndcg": 0.8256307286748215,
+          "term_coverage": 0.8888888888888888
+        },
+        "B_scoped_dense": {
+          "recall": 1.0,
+          "mrr": 0.8333333333333334,
+          "ndcg": 0.8734836795718651,
+          "term_coverage": 1.0
+        },
+        "B_scoped_hybrid": {
+          "recall": 1.0,
+          "mrr": 0.787037037037037,
+          "ndcg": 0.8401784790716501,
+          "term_coverage": 0.8888888888888888
+        },
+        "C_production": {
+          "recall": 1.0,
+          "mrr": 0.7962962962962963,
+          "ndcg": 0.8478810837301619,
+          "term_coverage": 0.8888888888888888
+        }
+      },
+      "multi_part": {
+        "n": 9,
+        "A_global_dense": {
+          "recall": 0.8888888888888888,
+          "mrr": 0.75,
+          "ndcg": 0.7846229235160945,
+          "term_coverage": 0.8888888888888888
+        },
+        "A_global_hybrid": {
+          "recall": 1.0,
+          "mrr": 0.8611111111111112,
+          "ndcg": 0.8957340346272056,
+          "term_coverage": 1.0
+        },
+        "B_scoped_dense": {
+          "recall": 0.8888888888888888,
+          "mrr": 0.8055555555555556,
+          "ndcg": 0.8256307286748215,
+          "term_coverage": 0.8888888888888888
+        },
+        "B_scoped_hybrid": {
+          "recall": 1.0,
+          "mrr": 0.9166666666666666,
+          "ndcg": 0.9367418397859326,
+          "term_coverage": 1.0
+        },
+        "C_production": {
+          "recall": 1.0,
+          "mrr": 0.9259259259259259,
+          "ndcg": 0.9444444444444444,
+          "term_coverage": 1.0
+        }
+      },
+      "numeric_detail": {
+        "n": 11,
+        "A_global_dense": {
+          "recall": 0.9090909090909091,
+          "mrr": 0.6621212121212121,
+          "ndcg": 0.7225871926253993,
+          "term_coverage": 0.9090909090909091
+        },
+        "A_global_hybrid": {
+          "recall": 0.9090909090909091,
+          "mrr": 0.7954545454545454,
+          "ndcg": 0.8237823919677136,
+          "term_coverage": 0.9090909090909091
+        },
+        "B_scoped_dense": {
+          "recall": 1.0,
+          "mrr": 0.6848484848484848,
+          "ndcg": 0.7617396069957078,
+          "term_coverage": 0.9090909090909091
+        },
+        "B_scoped_hybrid": {
+          "recall": 0.9090909090909091,
+          "mrr": 0.803030303030303,
+          "ndcg": 0.8300845230519507,
+          "term_coverage": 0.9090909090909091
+        },
+        "C_production": {
+          "recall": 0.9090909090909091,
+          "mrr": 0.803030303030303,
+          "ndcg": 0.8300845230519507,
+          "term_coverage": 0.9090909090909091
+        }
+      },
+      "section_retrieval": {
+        "n": 8,
+        "A_global_dense": {
+          "recall": 0.75,
+          "mrr": 0.6041666666666666,
+          "ndcg": 0.6413662191964322,
+          "term_coverage": 0.875
+        },
+        "A_global_hybrid": {
+          "recall": 0.75,
+          "mrr": 0.6875,
+          "ndcg": 0.7038662191964322,
+          "term_coverage": 0.875
+        },
+        "B_scoped_dense": {
+          "recall": 0.75,
+          "mrr": 0.6666666666666666,
+          "ndcg": 0.6875,
+          "term_coverage": 0.875
+        },
+        "B_scoped_hybrid": {
+          "recall": 0.75,
+          "mrr": 0.6875,
+          "ndcg": 0.7038662191964322,
+          "term_coverage": 0.875
+        },
+        "C_production": {
+          "recall": 0.75,
+          "mrr": 0.6875,
+          "ndcg": 0.7038662191964322,
+          "term_coverage": 0.875
+        }
+      },
+      "terminology_semantic": {
+        "n": 8,
+        "A_global_dense": {
+          "recall": 1.0,
+          "mrr": 0.6979166666666666,
+          "ndcg": 0.7740670081520385,
+          "term_coverage": 1.0
+        },
+        "A_global_hybrid": {
+          "recall": 1.0,
+          "mrr": 0.9375,
+          "ndcg": 0.9538662191964322,
+          "term_coverage": 1.0
+        },
+        "B_scoped_dense": {
+          "recall": 1.0,
+          "mrr": 0.7083333333333334,
+          "ndcg": 0.7827324383928644,
+          "term_coverage": 1.0
+        },
+        "B_scoped_hybrid": {
+          "recall": 1.0,
+          "mrr": 0.9375,
+          "ndcg": 0.9538662191964322,
+          "term_coverage": 1.0
+        },
+        "C_production": {
+          "recall": 1.0,
+          "mrr": 0.9375,
+          "ndcg": 0.9538662191964322,
+          "term_coverage": 1.0
+        }
+      }
+    }
+  },
+  "per_question": [
+    {
+      "id": "H01",
+      "category": "numeric_detail",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.003419996937737,
+          "median_ms": 24.19309999095276,
+          "stdev_ms": 2.350678570045952,
+          "p95_ms": 24.94709999882616,
+          "min_ms": 23.073899996234104,
+          "max_ms": 29.02929999982007,
+          "samples_ms": [
+            24.94709999882616,
+            24.19309999095276,
+            29.02929999982007,
+            23.77369999885559,
+            23.073899996234104
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.87605999992229,
+          "median_ms": 26.479799998924136,
+          "stdev_ms": 12.239657297700319,
+          "p95_ms": 27.746300009312108,
+          "min_ms": 25.250499980757013,
+          "max_ms": 53.71279999963008,
+          "samples_ms": [
+            53.71279999963008,
+            27.746300009312108,
+            26.479799998924136,
+            25.250499980757013,
+            26.190900010988116
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.519880006322637,
+          "median_ms": 25.487000006251037,
+          "stdev_ms": 0.7673662704215919,
+          "p95_ms": 25.491900014458224,
+          "min_ms": 24.647500016726553,
+          "max_ms": 26.747099997010082,
+          "samples_ms": [
+            25.22589999716729,
+            24.647500016726553,
+            26.747099997010082,
+            25.487000006251037,
+            25.491900014458224
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.776360001415014,
+          "median_ms": 29.629999975441024,
+          "stdev_ms": 0.6989529874818291,
+          "p95_ms": 30.08570001111366,
+          "min_ms": 28.898000018671155,
+          "max_ms": 30.770299985306337,
+          "samples_ms": [
+            30.770299985306337,
+            30.08570001111366,
+            29.497800016542897,
+            29.629999975441024,
+            28.898000018671155
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 33.0401599931065,
+          "median_ms": 32.874800002900884,
+          "stdev_ms": 0.9509535832009245,
+          "p95_ms": 33.373800019035116,
+          "min_ms": 32.026899978518486,
+          "max_ms": 34.4860999903176,
+          "samples_ms": [
+            32.874800002900884,
+            32.43919997476041,
+            34.4860999903176,
+            33.373800019035116,
+            32.026899978518486
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H02",
+      "category": "factual_extraction",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.692279998678714,
+          "median_ms": 26.25870000338182,
+          "stdev_ms": 1.574771512400508,
+          "p95_ms": 26.336500013712794,
+          "min_ms": 25.67169998656027,
+          "max_ms": 29.458099976181984,
+          "samples_ms": [
+            25.67169998656027,
+            25.736400013556704,
+            26.336500013712794,
+            26.25870000338182,
+            29.458099976181984
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.125700008124113,
+          "median_ms": 31.18640001048334,
+          "stdev_ms": 0.45397215384840583,
+          "p95_ms": 31.417000020155683,
+          "min_ms": 30.498000007355586,
+          "max_ms": 31.653300015022978,
+          "samples_ms": [
+            31.18640001048334,
+            31.653300015022978,
+            30.87379998760298,
+            31.417000020155683,
+            30.498000007355586
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 38.51458000135608,
+          "median_ms": 37.79120001127012,
+          "stdev_ms": 1.7877028284114842,
+          "p95_ms": 38.912099989829585,
+          "min_ms": 37.147399998502806,
+          "max_ms": 41.45869999774732,
+          "samples_ms": [
+            41.45869999774732,
+            37.26350000943057,
+            37.147399998502806,
+            37.79120001127012,
+            38.912099989829585
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.915639993036166,
+          "median_ms": 25.981100014178082,
+          "stdev_ms": 0.7480334772798902,
+          "p95_ms": 26.25699999043718,
+          "min_ms": 25.081699975999072,
+          "max_ms": 26.944899989757687,
+          "samples_ms": [
+            26.25699999043718,
+            26.944899989757687,
+            25.981100014178082,
+            25.081699975999072,
+            25.313499994808808
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.701319999527186,
+          "median_ms": 28.694999986328185,
+          "stdev_ms": 0.6675852040305644,
+          "p95_ms": 29.202900012023747,
+          "min_ms": 27.816099987830967,
+          "max_ms": 29.475699993781745,
+          "samples_ms": [
+            28.694999986328185,
+            28.316900017671287,
+            27.816099987830967,
+            29.202900012023747,
+            29.475699993781745
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H03",
+      "category": "numeric_detail",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "recall_all_returned": 0.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 40.78585999086499,
+          "median_ms": 38.44959998968989,
+          "stdev_ms": 4.2628948792073915,
+          "p95_ms": 42.78419999172911,
+          "min_ms": 37.03700000187382,
+          "max_ms": 47.34769999049604,
+          "samples_ms": [
+            38.3107999805361,
+            38.44959998968989,
+            37.03700000187382,
+            42.78419999172911,
+            47.34769999049604
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 30.32825999544002,
+          "median_ms": 27.476999995997176,
+          "stdev_ms": 6.043599214368082,
+          "p95_ms": 34.22339999815449,
+          "min_ms": 24.55149998422712,
+          "max_ms": 38.94880000734702,
+          "samples_ms": [
+            38.94880000734702,
+            34.22339999815449,
+            27.476999995997176,
+            24.55149998422712,
+            26.4405999914743
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.2,
+        "ndcg": 0.38685280723454163,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 31.305260001681745,
+          "median_ms": 31.203199992887676,
+          "stdev_ms": 2.544506219142193,
+          "p95_ms": 33.33060001023114,
+          "min_ms": 28.083100012736395,
+          "max_ms": 34.252499986905605,
+          "samples_ms": [
+            29.656900005647913,
+            34.252499986905605,
+            28.083100012736395,
+            33.33060001023114,
+            31.203199992887676
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 27.337720000650734,
+          "median_ms": 27.196999988518655,
+          "stdev_ms": 1.4757538922537932,
+          "p95_ms": 28.359699994325638,
+          "min_ms": 25.544900010572746,
+          "max_ms": 29.210800013970584,
+          "samples_ms": [
+            28.359699994325638,
+            29.210800013970584,
+            26.376199995866045,
+            25.544900010572746,
+            27.196999988518655
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 33.5553000040818,
+          "median_ms": 33.62790000392124,
+          "stdev_ms": 1.3767758832682098,
+          "p95_ms": 34.61780000361614,
+          "min_ms": 31.526200007647276,
+          "max_ms": 34.98490000492893,
+          "samples_ms": [
+            31.526200007647276,
+            34.98490000492893,
+            34.61780000361614,
+            33.62790000392124,
+            33.019700000295416
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H04",
+      "category": "terminology_semantic",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.914619996910915,
+          "median_ms": 25.83640001830645,
+          "stdev_ms": 1.7988943883549366,
+          "p95_ms": 26.148099976126105,
+          "min_ms": 23.642299987841398,
+          "max_ms": 28.628300002310425,
+          "samples_ms": [
+            26.148099976126105,
+            25.317999999970198,
+            28.628300002310425,
+            23.642299987841398,
+            25.83640001830645
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.51752000185661,
+          "median_ms": 26.916900009382516,
+          "stdev_ms": 2.0688279564890903,
+          "p95_ms": 26.952500018524006,
+          "min_ms": 26.076899986946955,
+          "max_ms": 31.16250000311993,
+          "samples_ms": [
+            31.16250000311993,
+            26.952500018524006,
+            26.076899986946955,
+            26.916900009382516,
+            26.478799991309643
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 24.982500000623986,
+          "median_ms": 24.921400006860495,
+          "stdev_ms": 0.7397250585644808,
+          "p95_ms": 24.934499990195036,
+          "min_ms": 24.35910000349395,
+          "max_ms": 26.222199987387285,
+          "samples_ms": [
+            26.222199987387285,
+            24.475300015183166,
+            24.921400006860495,
+            24.35910000349395,
+            24.934499990195036
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.41052000480704,
+          "median_ms": 31.235999980708584,
+          "stdev_ms": 3.434564208891971,
+          "p95_ms": 31.856699992204085,
+          "min_ms": 26.63510001730174,
+          "max_ms": 34.97210002387874,
+          "samples_ms": [
+            27.352700009942055,
+            26.63510001730174,
+            31.235999980708584,
+            34.97210002387874,
+            31.856699992204085
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 44.06539999763481,
+          "median_ms": 44.89130000001751,
+          "stdev_ms": 4.394378114065858,
+          "p95_ms": 45.16369997872971,
+          "min_ms": 39.756499987561256,
+          "max_ms": 50.45120001886971,
+          "samples_ms": [
+            45.16369997872971,
+            40.06430000299588,
+            50.45120001886971,
+            44.89130000001751,
+            39.756499987561256
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H05",
+      "category": "numeric_detail",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.226980002364144,
+          "median_ms": 27.935299993259832,
+          "stdev_ms": 1.449150570197618,
+          "p95_ms": 28.25110001140274,
+          "min_ms": 27.070100011769682,
+          "max_ms": 30.665700003737584,
+          "samples_ms": [
+            27.070100011769682,
+            27.21269999165088,
+            30.665700003737584,
+            27.935299993259832,
+            28.25110001140274
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.194739998318255,
+          "median_ms": 31.125100009376183,
+          "stdev_ms": 0.9842936405996039,
+          "p95_ms": 32.10899999248795,
+          "min_ms": 29.79229998891242,
+          "max_ms": 32.14900000602938,
+          "samples_ms": [
+            30.79829999478534,
+            32.14900000602938,
+            31.125100009376183,
+            32.10899999248795,
+            29.79229998891242
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 43.62256000749767,
+          "median_ms": 41.789500013692304,
+          "stdev_ms": 4.567530761022632,
+          "p95_ms": 43.67490002186969,
+          "min_ms": 39.692099991953,
+          "max_ms": 51.39390000840649,
+          "samples_ms": [
+            41.789500013692304,
+            51.39390000840649,
+            43.67490002186969,
+            41.56240000156686,
+            39.692099991953
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 24.613639997551218,
+          "median_ms": 24.68629999202676,
+          "stdev_ms": 0.3275301277107469,
+          "p95_ms": 24.755799997365102,
+          "min_ms": 24.11319999373518,
+          "max_ms": 24.993500002892688,
+          "samples_ms": [
+            24.993500002892688,
+            24.755799997365102,
+            24.519400001736358,
+            24.11319999373518,
+            24.68629999202676
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.53526000212878,
+          "median_ms": 26.36509999865666,
+          "stdev_ms": 0.7541861018281363,
+          "p95_ms": 27.136000018799677,
+          "min_ms": 25.471100001595914,
+          "max_ms": 27.377499995054677,
+          "samples_ms": [
+            27.377499995054677,
+            26.36509999865666,
+            25.471100001595914,
+            26.32659999653697,
+            27.136000018799677
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H32",
+      "category": "factual_extraction",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 0.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 37.54508000565693,
+          "median_ms": 37.411099998280406,
+          "stdev_ms": 0.40266961834435333,
+          "p95_ms": 37.75859999586828,
+          "min_ms": 37.058500020066276,
+          "max_ms": 38.11290001613088,
+          "samples_ms": [
+            37.058500020066276,
+            37.411099998280406,
+            37.3842999979388,
+            38.11290001613088,
+            37.75859999586828
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.2,
+        "ndcg": 0.38685280723454163,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 24.241359997540712,
+          "median_ms": 24.475599988363683,
+          "stdev_ms": 0.7223843913352829,
+          "p95_ms": 24.819300015224144,
+          "min_ms": 23.445300001185387,
+          "max_ms": 24.962900002719834,
+          "samples_ms": [
+            24.475599988363683,
+            24.819300015224144,
+            24.962900002719834,
+            23.445300001185387,
+            23.503699980210513
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.148980000289157,
+          "median_ms": 26.138100016396493,
+          "stdev_ms": 0.70574770823794,
+          "p95_ms": 26.39779998571612,
+          "min_ms": 25.37859999574721,
+          "max_ms": 27.188200008822605,
+          "samples_ms": [
+            26.39779998571612,
+            27.188200008822605,
+            25.64219999476336,
+            26.138100016396493,
+            25.37859999574721
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 27.127520000794902,
+          "median_ms": 25.93999999226071,
+          "stdev_ms": 1.6825013579529278,
+          "p95_ms": 28.778400010196492,
+          "min_ms": 25.85560001898557,
+          "max_ms": 29.150899994419888,
+          "samples_ms": [
+            25.93999999226071,
+            25.912699988111854,
+            28.778400010196492,
+            29.150899994419888,
+            25.85560001898557
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 29.118519998155534,
+          "median_ms": 29.28240000619553,
+          "stdev_ms": 0.4984291557068183,
+          "p95_ms": 29.352499986998737,
+          "min_ms": 28.420499991625547,
+          "max_ms": 29.70439998898655,
+          "samples_ms": [
+            29.70439998898655,
+            28.832800016971305,
+            28.420499991625547,
+            29.28240000619553,
+            29.352499986998737
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H33",
+      "category": "multi_part",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.180560001172125,
+          "median_ms": 24.73090001149103,
+          "stdev_ms": 0.9461704282619913,
+          "p95_ms": 25.18569998210296,
+          "min_ms": 24.47440000833012,
+          "max_ms": 26.809000002685934,
+          "samples_ms": [
+            26.809000002685934,
+            24.70280000125058,
+            24.47440000833012,
+            25.18569998210296,
+            24.73090001149103
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.57075999979861,
+          "median_ms": 27.24500000476837,
+          "stdev_ms": 0.7363959692651302,
+          "p95_ms": 27.911100012715906,
+          "min_ms": 26.933099987218156,
+          "max_ms": 28.702800016617402,
+          "samples_ms": [
+            27.061799977673218,
+            27.24500000476837,
+            27.911100012715906,
+            26.933099987218156,
+            28.702800016617402
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.305240004556254,
+          "median_ms": 28.680200019152835,
+          "stdev_ms": 1.149768834749338,
+          "p95_ms": 28.704299998935312,
+          "min_ms": 26.927800005069003,
+          "max_ms": 29.81290000025183,
+          "samples_ms": [
+            29.81290000025183,
+            27.40099999937229,
+            28.680200019152835,
+            28.704299998935312,
+            26.927800005069003
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.2533800015226,
+          "median_ms": 29.97750000213273,
+          "stdev_ms": 1.080226854024029,
+          "p95_ms": 31.276199995772913,
+          "min_ms": 29.234500019811094,
+          "max_ms": 31.500699988100678,
+          "samples_ms": [
+            29.27800000179559,
+            31.500699988100678,
+            29.234500019811094,
+            29.97750000213273,
+            31.276199995772913
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 43.37946000159718,
+          "median_ms": 41.103600000496954,
+          "stdev_ms": 4.310380774042462,
+          "p95_ms": 44.863599992822856,
+          "min_ms": 40.27420000056736,
+          "max_ms": 50.312900013523176,
+          "samples_ms": [
+            40.27420000056736,
+            41.103600000496954,
+            40.34300000057556,
+            50.312900013523176,
+            44.863599992822856
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H34",
+      "category": "terminology_semantic",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.820340003585443,
+          "median_ms": 29.173799994168803,
+          "stdev_ms": 0.7635330092722146,
+          "p95_ms": 29.345299990382046,
+          "min_ms": 27.702100021997467,
+          "max_ms": 29.511300002923235,
+          "samples_ms": [
+            29.345299990382046,
+            29.173799994168803,
+            28.369200008455664,
+            29.511300002923235,
+            27.702100021997467
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.924059997778386,
+          "median_ms": 30.3684999817051,
+          "stdev_ms": 1.2197926662082716,
+          "p95_ms": 32.20090002287179,
+          "min_ms": 29.66919998289086,
+          "max_ms": 32.26220002397895,
+          "samples_ms": [
+            32.26220002397895,
+            30.3684999817051,
+            30.11949997744523,
+            29.66919998289086,
+            32.20090002287179
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 56.00009999470785,
+          "median_ms": 52.222900005290285,
+          "stdev_ms": 8.870069725760915,
+          "p95_ms": 62.53860000288114,
+          "min_ms": 46.26299999654293,
+          "max_ms": 67.81119998777285,
+          "samples_ms": [
+            51.164799981052056,
+            46.26299999654293,
+            62.53860000288114,
+            67.81119998777285,
+            52.222900005290285
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.254379999591038,
+          "median_ms": 26.06889998423867,
+          "stdev_ms": 0.32670267573775696,
+          "p95_ms": 26.58000000519678,
+          "min_ms": 25.946599984308705,
+          "max_ms": 26.6362999973353,
+          "samples_ms": [
+            25.946599984308705,
+            26.040100026875734,
+            26.58000000519678,
+            26.06889998423867,
+            26.6362999973353
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.695859997766092,
+          "median_ms": 27.039599983254448,
+          "stdev_ms": 1.4380656378261891,
+          "p95_ms": 28.8140999909956,
+          "min_ms": 26.35910001117736,
+          "max_ms": 29.62010001647286,
+          "samples_ms": [
+            28.8140999909956,
+            29.62010001647286,
+            27.039599983254448,
+            26.35910001117736,
+            26.64639998693019
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H35",
+      "category": "section_retrieval",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 45.441399997798726,
+          "median_ms": 44.394199998350814,
+          "stdev_ms": 3.4563614387979364,
+          "p95_ms": 48.676100006559864,
+          "min_ms": 40.86099998676218,
+          "max_ms": 49.126099998829886,
+          "samples_ms": [
+            49.126099998829886,
+            44.394199998350814,
+            40.86099998676218,
+            48.676100006559864,
+            44.149599998490885
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.750200004084036,
+          "median_ms": 27.2881000128109,
+          "stdev_ms": 1.389315876640713,
+          "p95_ms": 28.95179999177344,
+          "min_ms": 26.298000011593103,
+          "max_ms": 29.466799984220415,
+          "samples_ms": [
+            26.298000011593103,
+            27.2881000128109,
+            28.95179999177344,
+            29.466799984220415,
+            26.746300020022318
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.637979995459318,
+          "median_ms": 29.64710001833737,
+          "stdev_ms": 1.4092808500024432,
+          "p95_ms": 30.40859999600798,
+          "min_ms": 27.740499994251877,
+          "max_ms": 31.44689998589456,
+          "samples_ms": [
+            28.946799982804805,
+            27.740499994251877,
+            29.64710001833737,
+            31.44689998589456,
+            30.40859999600798
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.142480000155047,
+          "median_ms": 28.463399998145178,
+          "stdev_ms": 2.180331284445068,
+          "p95_ms": 28.89549999963492,
+          "min_ms": 27.553799998713657,
+          "max_ms": 32.93039998970926,
+          "samples_ms": [
+            27.869300014572218,
+            28.463399998145178,
+            32.93039998970926,
+            28.89549999963492,
+            27.553799998713657
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 32.588580006267875,
+          "median_ms": 30.877200013492256,
+          "stdev_ms": 3.456270327877415,
+          "p95_ms": 32.825500005856156,
+          "min_ms": 30.13120000832714,
+          "max_ms": 38.49340000306256,
+          "samples_ms": [
+            30.877200013492256,
+            30.13120000832714,
+            30.615600000601262,
+            32.825500005856156,
+            38.49340000306256
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H06",
+      "category": "factual_extraction",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.04467999865301,
+          "median_ms": 26.575099996989593,
+          "stdev_ms": 1.3797239608712115,
+          "p95_ms": 27.142100007040426,
+          "min_ms": 25.68220000830479,
+          "max_ms": 29.330399993341416,
+          "samples_ms": [
+            29.330399993341416,
+            25.68220000830479,
+            27.142100007040426,
+            26.575099996989593,
+            26.493599987588823
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.210840006591752,
+          "median_ms": 26.597000018227845,
+          "stdev_ms": 1.0897240564879351,
+          "p95_ms": 28.09590002289042,
+          "min_ms": 26.16929999203421,
+          "max_ms": 28.6467999976594,
+          "samples_ms": [
+            28.09590002289042,
+            28.6467999976594,
+            26.545200002146885,
+            26.597000018227845,
+            26.16929999203421
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.249439992941916,
+          "median_ms": 27.013099985197186,
+          "stdev_ms": 2.811585625110554,
+          "p95_ms": 29.05409998493269,
+          "min_ms": 25.485999998636544,
+          "max_ms": 32.736900000600144,
+          "samples_ms": [
+            27.013099985197186,
+            25.485999998636544,
+            26.957099995343015,
+            32.736900000600144,
+            29.05409998493269
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 46.93298000493087,
+          "median_ms": 41.04350000852719,
+          "stdev_ms": 22.116909091707228,
+          "p95_ms": 47.36419999971986,
+          "min_ms": 29.686000023502856,
+          "max_ms": 84.42500000819564,
+          "samples_ms": [
+            32.1461999847088,
+            41.04350000852719,
+            84.42500000819564,
+            47.36419999971986,
+            29.686000023502856
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 36.00190000724979,
+          "median_ms": 35.80400001374073,
+          "stdev_ms": 2.4845181432724543,
+          "p95_ms": 37.0491000066977,
+          "min_ms": 33.563600009074435,
+          "max_ms": 39.6554000035394,
+          "samples_ms": [
+            37.0491000066977,
+            35.80400001374073,
+            33.563600009074435,
+            33.93740000319667,
+            39.6554000035394
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H07",
+      "category": "section_retrieval",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.805360010825098,
+          "median_ms": 26.973400003043935,
+          "stdev_ms": 2.2579243650450356,
+          "p95_ms": 28.38900001370348,
+          "min_ms": 26.01570001570508,
+          "max_ms": 31.477700016694143,
+          "samples_ms": [
+            31.477700016694143,
+            28.38900001370348,
+            26.973400003043935,
+            26.17100000497885,
+            26.01570001570508
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 33.752780000213534,
+          "median_ms": 33.6638999870047,
+          "stdev_ms": 2.423136172107016,
+          "p95_ms": 34.75399999297224,
+          "min_ms": 30.07080001407303,
+          "max_ms": 36.73190000699833,
+          "samples_ms": [
+            33.54330000001937,
+            34.75399999297224,
+            33.6638999870047,
+            36.73190000699833,
+            30.07080001407303
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 42.46005999739282,
+          "median_ms": 42.07649998716079,
+          "stdev_ms": 0.7359038373096792,
+          "p95_ms": 42.96489999978803,
+          "min_ms": 41.74419998889789,
+          "max_ms": 43.490500014740974,
+          "samples_ms": [
+            42.07649998716079,
+            42.02419999637641,
+            41.74419998889789,
+            42.96489999978803,
+            43.490500014740974
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.833019998390228,
+          "median_ms": 25.81380002084188,
+          "stdev_ms": 0.8998674717273001,
+          "p95_ms": 26.07199997873977,
+          "min_ms": 24.593399983132258,
+          "max_ms": 27.09290001075715,
+          "samples_ms": [
+            25.59299999848008,
+            24.593399983132258,
+            27.09290001075715,
+            26.07199997873977,
+            25.81380002084188
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.243679995648563,
+          "median_ms": 28.296399977989495,
+          "stdev_ms": 0.3959879470608883,
+          "p95_ms": 28.376700007356703,
+          "min_ms": 27.604500006418675,
+          "max_ms": 28.688799997325987,
+          "samples_ms": [
+            28.688799997325987,
+            28.251999989151955,
+            27.604500006418675,
+            28.376700007356703,
+            28.296399977989495
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H08",
+      "category": "factual_extraction",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 41.00392000400461,
+          "median_ms": 40.484000026481226,
+          "stdev_ms": 1.0850787150235133,
+          "p95_ms": 41.41259999596514,
+          "min_ms": 39.968500001123175,
+          "max_ms": 42.70479999831878,
+          "samples_ms": [
+            42.70479999831878,
+            41.41259999596514,
+            39.968500001123175,
+            40.44969999813475,
+            40.484000026481226
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 24.46334000560455,
+          "median_ms": 24.452899990137666,
+          "stdev_ms": 0.8604653978838454,
+          "p95_ms": 25.029800017364323,
+          "min_ms": 23.422099999152124,
+          "max_ms": 25.554100022418424,
+          "samples_ms": [
+            23.422099999152124,
+            24.452899990137666,
+            25.554100022418424,
+            23.857799998950213,
+            25.029800017364323
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.918279997538775,
+          "median_ms": 26.832299976376817,
+          "stdev_ms": 2.0896990521449905,
+          "p95_ms": 27.955600002314895,
+          "min_ms": 26.537500001722947,
+          "max_ms": 31.523499987088144,
+          "samples_ms": [
+            31.523499987088144,
+            26.537500001722947,
+            26.742500020191073,
+            26.832299976376817,
+            27.955600002314895
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.240760007407516,
+          "median_ms": 26.380600000265986,
+          "stdev_ms": 2.6796683641661487,
+          "p95_ms": 26.77830000175163,
+          "min_ms": 24.910800013458356,
+          "max_ms": 31.86610000557266,
+          "samples_ms": [
+            31.86610000557266,
+            26.268000015988946,
+            26.77830000175163,
+            24.910800013458356,
+            26.380600000265986
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.59558000531979,
+          "median_ms": 29.33430002303794,
+          "stdev_ms": 2.511323518088709,
+          "p95_ms": 33.12670000013895,
+          "min_ms": 27.928600000450388,
+          "max_ms": 33.43199999653734,
+          "samples_ms": [
+            33.12670000013895,
+            33.43199999653734,
+            29.33430002303794,
+            27.928600000450388,
+            29.15630000643432
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H09",
+      "category": "multi_part",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.528680009301752,
+          "median_ms": 25.48959999694489,
+          "stdev_ms": 2.4746609306307676,
+          "p95_ms": 25.70600001490675,
+          "min_ms": 23.28790002502501,
+          "max_ms": 29.51520000351593,
+          "samples_ms": [
+            23.64470000611618,
+            23.28790002502501,
+            29.51520000351593,
+            25.48959999694489,
+            25.70600001490675
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.947799995308742,
+          "median_ms": 26.787699986016378,
+          "stdev_ms": 2.1370180115664192,
+          "p95_ms": 29.20520000043325,
+          "min_ms": 26.066399994306266,
+          "max_ms": 31.099199986783788,
+          "samples_ms": [
+            29.20520000043325,
+            26.066399994306266,
+            26.580500009004027,
+            26.787699986016378,
+            31.099199986783788
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 24.833999999100342,
+          "median_ms": 24.810600007185712,
+          "stdev_ms": 0.6263085523480197,
+          "p95_ms": 25.2467000100296,
+          "min_ms": 24.17089999653399,
+          "max_ms": 25.6494999921415,
+          "samples_ms": [
+            25.6494999921415,
+            25.2467000100296,
+            24.810600007185712,
+            24.17089999653399,
+            24.29229998961091
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.698320001829416,
+          "median_ms": 28.709900012472644,
+          "stdev_ms": 3.5364924353003806,
+          "p95_ms": 32.09620001143776,
+          "min_ms": 27.86430000560358,
+          "max_ms": 36.2979999918025,
+          "samples_ms": [
+            28.709900012472644,
+            27.86430000560358,
+            28.523199987830594,
+            32.09620001143776,
+            36.2979999918025
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 37.959639995824546,
+          "median_ms": 37.33959997771308,
+          "stdev_ms": 1.0720628491875144,
+          "p95_ms": 39.0911000140477,
+          "min_ms": 37.058599991723895,
+          "max_ms": 39.165599999250844,
+          "samples_ms": [
+            39.165599999250844,
+            37.33959997771308,
+            39.0911000140477,
+            37.058599991723895,
+            37.14329999638721
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H10",
+      "category": "numeric_detail",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.03045999794267,
+          "median_ms": 28.21399999083951,
+          "stdev_ms": 2.992071233648493,
+          "p95_ms": 32.21900001517497,
+          "min_ms": 27.666299982229248,
+          "max_ms": 34.20040002674796,
+          "samples_ms": [
+            27.666299982229248,
+            27.85259997472167,
+            34.20040002674796,
+            32.21900001517497,
+            28.21399999083951
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 33.52187999407761,
+          "median_ms": 32.6453999732621,
+          "stdev_ms": 3.2019031021060638,
+          "p95_ms": 35.19799999776296,
+          "min_ms": 30.274499993538484,
+          "max_ms": 38.20190002443269,
+          "samples_ms": [
+            31.289599981391802,
+            32.6453999732621,
+            38.20190002443269,
+            30.274499993538484,
+            35.19799999776296
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 40.05955999600701,
+          "median_ms": 39.449999982025474,
+          "stdev_ms": 2.451378160365861,
+          "p95_ms": 40.479499992216006,
+          "min_ms": 37.91029998683371,
+          "max_ms": 44.06929999822751,
+          "samples_ms": [
+            44.06929999822751,
+            40.479499992216006,
+            38.38870002073236,
+            39.449999982025474,
+            37.91029998683371
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.62041999772191,
+          "median_ms": 24.356499983696267,
+          "stdev_ms": 1.919697216957128,
+          "p95_ms": 26.962600008118898,
+          "min_ms": 24.147699994500726,
+          "max_ms": 28.342600009636953,
+          "samples_ms": [
+            24.356499983696267,
+            24.292699992656708,
+            26.962600008118898,
+            28.342600009636953,
+            24.147699994500726
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.526240005157888,
+          "median_ms": 27.151099988259375,
+          "stdev_ms": 2.8757819393583293,
+          "p95_ms": 29.237000009743497,
+          "min_ms": 26.10439999261871,
+          "max_ms": 33.236100018257275,
+          "samples_ms": [
+            29.237000009743497,
+            26.902600016910583,
+            27.151099988259375,
+            26.10439999261871,
+            33.236100018257275
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H36",
+      "category": "factual_extraction",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 44.27578000468202,
+          "median_ms": 43.755600025178865,
+          "stdev_ms": 1.509050032795931,
+          "p95_ms": 44.564599986188114,
+          "min_ms": 42.9868999926839,
+          "max_ms": 46.75900001893751,
+          "samples_ms": [
+            46.75900001893751,
+            44.564599986188114,
+            43.755600025178865,
+            42.9868999926839,
+            43.3128000004217
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.01332000340335,
+          "median_ms": 25.204100005794317,
+          "stdev_ms": 1.946910359032251,
+          "p95_ms": 25.913999998010695,
+          "min_ms": 24.53970001079142,
+          "max_ms": 29.382500011706725,
+          "samples_ms": [
+            25.204100005794317,
+            25.913999998010695,
+            29.382500011706725,
+            24.53970001079142,
+            25.026299990713596
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.041599999414757,
+          "median_ms": 27.696599980117753,
+          "stdev_ms": 0.9625381182432075,
+          "p95_ms": 28.321799996774644,
+          "min_ms": 27.11920000729151,
+          "max_ms": 29.576900007668883,
+          "samples_ms": [
+            28.321799996774644,
+            27.11920000729151,
+            27.696599980117753,
+            27.493500005220994,
+            29.576900007668883
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.453500000294298,
+          "median_ms": 29.730200010817498,
+          "stdev_ms": 1.7397358967175276,
+          "p95_ms": 31.124500004807487,
+          "min_ms": 28.83480000309646,
+          "max_ms": 33.175399992614985,
+          "samples_ms": [
+            28.83480000309646,
+            31.124500004807487,
+            29.730200010817498,
+            29.40259999013506,
+            33.175399992614985
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.41427999944426,
+          "median_ms": 30.501000001095235,
+          "stdev_ms": 2.368559067876197,
+          "p95_ms": 31.338100001448765,
+          "min_ms": 29.32699999655597,
+          "max_ms": 35.45369999483228,
+          "samples_ms": [
+            31.338100001448765,
+            29.32699999655597,
+            30.501000001095235,
+            35.45369999483228,
+            30.45160000328906
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H37",
+      "category": "multi_part",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.591360000427812,
+          "median_ms": 29.862900002626702,
+          "stdev_ms": 2.8242436573121137,
+          "p95_ms": 30.571900017093867,
+          "min_ms": 25.495800015050918,
+          "max_ms": 31.408899987582117,
+          "samples_ms": [
+            31.408899987582117,
+            29.862900002626702,
+            25.617299979785457,
+            25.495800015050918,
+            30.571900017093867
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.853559996467084,
+          "median_ms": 30.30750001198612,
+          "stdev_ms": 1.2469541571271412,
+          "p95_ms": 31.379899999592453,
+          "min_ms": 29.662199987797067,
+          "max_ms": 32.78039998258464,
+          "samples_ms": [
+            29.662199987797067,
+            31.379899999592453,
+            30.137800000375137,
+            30.30750001198612,
+            32.78039998258464
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.392980010947213,
+          "median_ms": 30.00420000171289,
+          "stdev_ms": 1.9128662019615357,
+          "p95_ms": 30.151100014336407,
+          "min_ms": 29.042900016065687,
+          "max_ms": 33.69010001188144,
+          "samples_ms": [
+            29.042900016065687,
+            30.00420000171289,
+            30.151100014336407,
+            33.69010001188144,
+            29.07660001073964
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 34.487239993177354,
+          "median_ms": 35.25580000132322,
+          "stdev_ms": 2.6557789330044677,
+          "p95_ms": 35.60119998292066,
+          "min_ms": 30.396299989661202,
+          "max_ms": 37.489699985599145,
+          "samples_ms": [
+            35.60119998292066,
+            33.69320000638254,
+            35.25580000132322,
+            37.489699985599145,
+            30.396299989661202
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 8,
+        "latency": {
+          "mean_ms": 69.58301999839023,
+          "median_ms": 69.64599998900667,
+          "stdev_ms": 1.3835011340523928,
+          "p95_ms": 69.8164000059478,
+          "min_ms": 68.08679999085143,
+          "max_ms": 71.7059999878984,
+          "samples_ms": [
+            68.65990001824684,
+            69.64599998900667,
+            68.08679999085143,
+            69.8164000059478,
+            71.7059999878984
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H38",
+      "category": "terminology_semantic",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.851399996550754,
+          "median_ms": 28.930899978149682,
+          "stdev_ms": 2.062192083831573,
+          "p95_ms": 30.041499994695187,
+          "min_ms": 28.14750000834465,
+          "max_ms": 33.33360000397079,
+          "samples_ms": [
+            28.14750000834465,
+            28.930899978149682,
+            33.33360000397079,
+            28.803499997593462,
+            30.041499994695187
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.5333399863448,
+          "median_ms": 31.437300000106916,
+          "stdev_ms": 1.5820096406871031,
+          "p95_ms": 31.94619997520931,
+          "min_ms": 29.664200003026053,
+          "max_ms": 33.911499980604276,
+          "samples_ms": [
+            33.911499980604276,
+            31.94619997520931,
+            30.70749997277744,
+            31.437300000106916,
+            29.664200003026053
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 43.530179996741936,
+          "median_ms": 43.21819997858256,
+          "stdev_ms": 0.9294693927841269,
+          "p95_ms": 44.07760000322014,
+          "min_ms": 42.64060000423342,
+          "max_ms": 44.8704999871552,
+          "samples_ms": [
+            44.8704999871552,
+            42.64060000423342,
+            42.84400001051836,
+            44.07760000322014,
+            43.21819997858256
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.43112000077963,
+          "median_ms": 25.59309999924153,
+          "stdev_ms": 1.796130351922326,
+          "p95_ms": 26.92209999077022,
+          "min_ms": 24.95330001693219,
+          "max_ms": 29.357499995967373,
+          "samples_ms": [
+            25.32960000098683,
+            29.357499995967373,
+            26.92209999077022,
+            24.95330001693219,
+            25.59309999924153
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.503420006018132,
+          "median_ms": 28.89730001334101,
+          "stdev_ms": 0.9604053025515321,
+          "p95_ms": 29.249200015328825,
+          "min_ms": 27.056199993239716,
+          "max_ms": 29.303899995284155,
+          "samples_ms": [
+            28.89730001334101,
+            28.010500012896955,
+            29.303899995284155,
+            27.056199993239716,
+            29.249200015328825
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H39",
+      "category": "section_retrieval",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 40.87790000485256,
+          "median_ms": 39.946300006704405,
+          "stdev_ms": 3.392217368342981,
+          "p95_ms": 41.56939999666065,
+          "min_ms": 36.988900013966486,
+          "max_ms": 46.185400016838685,
+          "samples_ms": [
+            46.185400016838685,
+            36.988900013966486,
+            39.946300006704405,
+            39.69949999009259,
+            41.56939999666065
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.341600001091138,
+          "median_ms": 27.047300012782216,
+          "stdev_ms": 2.438166657869948,
+          "p95_ms": 27.91659999638796,
+          "min_ms": 24.874099995940924,
+          "max_ms": 31.16280000540428,
+          "samples_ms": [
+            27.047300012782216,
+            27.91659999638796,
+            25.70719999494031,
+            24.874099995940924,
+            31.16280000540428
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.198179999366403,
+          "median_ms": 28.77260002424009,
+          "stdev_ms": 2.3020924722113167,
+          "p95_ms": 29.99360000831075,
+          "min_ms": 27.192499983357266,
+          "max_ms": 32.75689997826703,
+          "samples_ms": [
+            29.99360000831075,
+            32.75689997826703,
+            28.77260002424009,
+            27.192499983357266,
+            27.275300002656877
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.993120002793148,
+          "median_ms": 28.16529999836348,
+          "stdev_ms": 0.7321008239954533,
+          "p95_ms": 28.615400020498782,
+          "min_ms": 26.875200012000278,
+          "max_ms": 28.61579999444075,
+          "samples_ms": [
+            26.875200012000278,
+            28.61579999444075,
+            28.16529999836348,
+            28.615400020498782,
+            27.69389998866245
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.8804999969434,
+          "median_ms": 29.88270000787452,
+          "stdev_ms": 0.7586070824579341,
+          "p95_ms": 30.458399996859953,
+          "min_ms": 28.66310000536032,
+          "max_ms": 30.575199984014034,
+          "samples_ms": [
+            30.458399996859953,
+            29.88270000787452,
+            30.575199984014034,
+            29.82309999060817,
+            28.66310000536032
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H11",
+      "category": "numeric_detail",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.094980001449585,
+          "median_ms": 24.946399993496016,
+          "stdev_ms": 0.8670854289843558,
+          "p95_ms": 25.122899998677894,
+          "min_ms": 24.07780001522042,
+          "max_ms": 26.470899989362806,
+          "samples_ms": [
+            25.122899998677894,
+            24.85690001049079,
+            26.470899989362806,
+            24.946399993496016,
+            24.07780001522042
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.602320001460612,
+          "median_ms": 27.60840000701137,
+          "stdev_ms": 0.4957027467010607,
+          "p95_ms": 28.044899983797222,
+          "min_ms": 26.894600014202297,
+          "max_ms": 28.087199985748157,
+          "samples_ms": [
+            26.894600014202297,
+            28.044899983797222,
+            27.376500016544014,
+            27.60840000701137,
+            28.087199985748157
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.540440002689138,
+          "median_ms": 28.575100004673004,
+          "stdev_ms": 0.7847216283367627,
+          "p95_ms": 28.788299998268485,
+          "min_ms": 27.349499985575676,
+          "max_ms": 29.5283000159543,
+          "samples_ms": [
+            29.5283000159543,
+            27.349499985575676,
+            28.461000008974224,
+            28.788299998268485,
+            28.575100004673004
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.09039998962544,
+          "median_ms": 30.74449999257922,
+          "stdev_ms": 2.0969681336835193,
+          "p95_ms": 32.65859998646192,
+          "min_ms": 28.49709999281913,
+          "max_ms": 33.692299999529496,
+          "samples_ms": [
+            30.74449999257922,
+            28.49709999281913,
+            29.859499976737425,
+            32.65859998646192,
+            33.692299999529496
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 35.048580006696284,
+          "median_ms": 33.90560002299026,
+          "stdev_ms": 2.1387659796874035,
+          "p95_ms": 37.10099999443628,
+          "min_ms": 33.061299996916205,
+          "max_ms": 37.61830000439659,
+          "samples_ms": [
+            33.061299996916205,
+            33.55670001474209,
+            37.61830000439659,
+            37.10099999443628,
+            33.90560002299026
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H12",
+      "category": "numeric_detail",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.30548000242561,
+          "median_ms": 30.351499997777864,
+          "stdev_ms": 2.917050418866981,
+          "p95_ms": 30.669900006614625,
+          "min_ms": 27.132200018968433,
+          "max_ms": 34.85039999941364,
+          "samples_ms": [
+            28.523399989353493,
+            27.132200018968433,
+            30.669900006614625,
+            34.85039999941364,
+            30.351499997777864
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 34.2318199982401,
+          "median_ms": 34.75369999068789,
+          "stdev_ms": 1.5212389803036594,
+          "p95_ms": 34.935700008645654,
+          "min_ms": 32.22450002795085,
+          "max_ms": 36.06379998382181,
+          "samples_ms": [
+            34.935700008645654,
+            34.75369999068789,
+            32.22450002795085,
+            33.181399980094284,
+            36.06379998382181
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 34.73156000836752,
+          "median_ms": 34.99129999545403,
+          "stdev_ms": 3.1108013214103147,
+          "p95_ms": 36.45159999723546,
+          "min_ms": 31.592700019245967,
+          "max_ms": 38.85780001292005,
+          "samples_ms": [
+            38.85780001292005,
+            31.592700019245967,
+            31.76440001698211,
+            34.99129999545403,
+            36.45159999723546
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.35158000723459,
+          "median_ms": 27.469299995573238,
+          "stdev_ms": 2.497372887481442,
+          "p95_ms": 27.705000014975667,
+          "min_ms": 24.316800001543015,
+          "max_ms": 31.114600016735494,
+          "samples_ms": [
+            31.114600016735494,
+            24.316800001543015,
+            26.152200007345527,
+            27.705000014975667,
+            27.469299995573238
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.988080002134666,
+          "median_ms": 30.52679999382235,
+          "stdev_ms": 2.4778493758783338,
+          "p95_ms": 33.08449999894947,
+          "min_ms": 27.80690000508912,
+          "max_ms": 33.839100011391565,
+          "samples_ms": [
+            29.683100001420826,
+            27.80690000508912,
+            30.52679999382235,
+            33.839100011391565,
+            33.08449999894947
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H13",
+      "category": "numeric_detail",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 37.970320001477376,
+          "median_ms": 38.62499998649582,
+          "stdev_ms": 4.702384796745321,
+          "p95_ms": 40.34899998805486,
+          "min_ms": 33.05190001265146,
+          "max_ms": 44.22300000442192,
+          "samples_ms": [
+            33.60270001576282,
+            33.05190001265146,
+            38.62499998649582,
+            44.22300000442192,
+            40.34899998805486
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.82560000102967,
+          "median_ms": 26.00220000022091,
+          "stdev_ms": 2.1076978524201926,
+          "p95_ms": 28.233899996848777,
+          "min_ms": 24.478400009684265,
+          "max_ms": 29.712499992456287,
+          "samples_ms": [
+            28.233899996848777,
+            24.478400009684265,
+            29.712499992456287,
+            26.00220000022091,
+            25.701000005938113
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.085000003920868,
+          "median_ms": 28.41290002106689,
+          "stdev_ms": 0.7269819859929149,
+          "p95_ms": 28.566299995873123,
+          "min_ms": 26.862700004130602,
+          "max_ms": 28.604199993424118,
+          "samples_ms": [
+            26.862700004130602,
+            28.566299995873123,
+            28.41290002106689,
+            28.604199993424118,
+            27.978900005109608
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.470599997788668,
+          "median_ms": 25.518500013276935,
+          "stdev_ms": 0.4236922900018141,
+          "p95_ms": 25.715499999932945,
+          "min_ms": 24.901999975554645,
+          "max_ms": 25.992200011387467,
+          "samples_ms": [
+            25.992200011387467,
+            25.715499999932945,
+            25.518500013276935,
+            24.901999975554645,
+            25.224799988791347
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.745780000463128,
+          "median_ms": 28.53270000196062,
+          "stdev_ms": 0.5953254869263224,
+          "p95_ms": 29.083200002787635,
+          "min_ms": 28.098899987526238,
+          "max_ms": 29.600100009702146,
+          "samples_ms": [
+            28.53270000196062,
+            28.414000000339,
+            28.098899987526238,
+            29.083200002787635,
+            29.600100009702146
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H14",
+      "category": "numeric_detail",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.475119991460815,
+          "median_ms": 25.5442000052426,
+          "stdev_ms": 1.1096397675134737,
+          "p95_ms": 26.053199981106445,
+          "min_ms": 24.270900001283735,
+          "max_ms": 26.974499982316047,
+          "samples_ms": [
+            26.053199981106445,
+            25.5442000052426,
+            24.270900001283735,
+            24.532799987355247,
+            26.974499982316047
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.979160002199933,
+          "median_ms": 29.212099994765595,
+          "stdev_ms": 1.5248057577850727,
+          "p95_ms": 30.081400007475168,
+          "min_ms": 27.350500022294,
+          "max_ms": 30.759199988096952,
+          "samples_ms": [
+            30.759199988096952,
+            30.081400007475168,
+            27.49259999836795,
+            29.212099994765595,
+            27.350500022294
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.144160005263984,
+          "median_ms": 27.615300001343712,
+          "stdev_ms": 1.0254094629905153,
+          "p95_ms": 27.787200000602752,
+          "min_ms": 25.672399991890416,
+          "max_ms": 28.1416000216268,
+          "samples_ms": [
+            27.615300001343712,
+            26.50430001085624,
+            27.787200000602752,
+            28.1416000216268,
+            25.672399991890416
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.613260006997734,
+          "median_ms": 31.18770002038218,
+          "stdev_ms": 1.7441302714325406,
+          "p95_ms": 33.071500016376376,
+          "min_ms": 29.41720001399517,
+          "max_ms": 33.671599987428635,
+          "samples_ms": [
+            29.41720001399517,
+            30.71829999680631,
+            33.071500016376376,
+            33.671599987428635,
+            31.18770002038218
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 43.90852000215091,
+          "median_ms": 48.201700003119186,
+          "stdev_ms": 10.24593586796791,
+          "p95_ms": 49.96109998319298,
+          "min_ms": 32.8571000136435,
+          "max_ms": 55.271999997785315,
+          "samples_ms": [
+            48.201700003119186,
+            49.96109998319298,
+            55.271999997785315,
+            32.8571000136435,
+            33.25070001301356
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H15",
+      "category": "multi_part",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.57141999504529,
+          "median_ms": 29.351100005442277,
+          "stdev_ms": 1.6505774245456728,
+          "p95_ms": 30.100900010438636,
+          "min_ms": 27.60239999042824,
+          "max_ms": 32.031399983679876,
+          "samples_ms": [
+            28.77129998523742,
+            29.351100005442277,
+            30.100900010438636,
+            27.60239999042824,
+            32.031399983679876
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 32.84761999966577,
+          "median_ms": 32.59580000303686,
+          "stdev_ms": 1.0739509969300616,
+          "p95_ms": 33.492399990791455,
+          "min_ms": 31.779400014784187,
+          "max_ms": 34.36109999893233,
+          "samples_ms": [
+            32.59580000303686,
+            33.492399990791455,
+            32.009399990784004,
+            31.779400014784187,
+            34.36109999893233
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 51.27031998708844,
+          "median_ms": 51.75090002012439,
+          "stdev_ms": 6.310162707092024,
+          "p95_ms": 55.055599979823455,
+          "min_ms": 42.73969997302629,
+          "max_ms": 59.008399985032156,
+          "samples_ms": [
+            47.79699997743592,
+            42.73969997302629,
+            55.055599979823455,
+            51.75090002012439,
+            59.008399985032156
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.059139998164028,
+          "median_ms": 26.069599989568815,
+          "stdev_ms": 2.070011393930102,
+          "p95_ms": 27.431199996499345,
+          "min_ms": 25.278599990997463,
+          "max_ms": 30.49160001683049,
+          "samples_ms": [
+            30.49160001683049,
+            27.431199996499345,
+            26.069599989568815,
+            26.024699996924028,
+            25.278599990997463
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.017620010767132,
+          "median_ms": 29.335500003071502,
+          "stdev_ms": 2.2281159035552123,
+          "p95_ms": 30.22470002179034,
+          "min_ms": 28.29400001792237,
+          "max_ms": 33.759100013412535,
+          "samples_ms": [
+            29.335500003071502,
+            33.759100013412535,
+            28.29400001792237,
+            30.22470002179034,
+            28.47479999763891
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H16",
+      "category": "factual_extraction",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 36.41597999376245,
+          "median_ms": 35.29619998880662,
+          "stdev_ms": 3.842664594566644,
+          "p95_ms": 38.72509999200702,
+          "min_ms": 32.553099998040125,
+          "max_ms": 41.87479999382049,
+          "samples_ms": [
+            41.87479999382049,
+            38.72509999200702,
+            33.63069999613799,
+            35.29619998880662,
+            32.553099998040125
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 24.20520000741817,
+          "median_ms": 24.137800006428733,
+          "stdev_ms": 1.220739749463392,
+          "p95_ms": 24.7903999988921,
+          "min_ms": 22.617500013438985,
+          "max_ms": 25.86280001560226,
+          "samples_ms": [
+            24.137800006428733,
+            23.617500002728775,
+            25.86280001560226,
+            24.7903999988921,
+            22.617500013438985
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.932699997676536,
+          "median_ms": 28.382399992551655,
+          "stdev_ms": 1.7003508904754296,
+          "p95_ms": 29.40850000595674,
+          "min_ms": 27.465699997264892,
+          "max_ms": 31.66499998769723,
+          "samples_ms": [
+            27.741900004912168,
+            27.465699997264892,
+            29.40850000595674,
+            31.66499998769723,
+            28.382399992551655
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.023280000546947,
+          "median_ms": 28.536600002553314,
+          "stdev_ms": 2.373551766082266,
+          "p95_ms": 29.675600002519786,
+          "min_ms": 26.704100018832833,
+          "max_ms": 32.76229999028146,
+          "samples_ms": [
+            29.675600002519786,
+            32.76229999028146,
+            28.536600002553314,
+            26.704100018832833,
+            27.43779998854734
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 32.11375999962911,
+          "median_ms": 31.670099997427315,
+          "stdev_ms": 1.230222713819784,
+          "p95_ms": 32.84410000196658,
+          "min_ms": 31.03350001038052,
+          "max_ms": 33.8964999828022,
+          "samples_ms": [
+            31.03350001038052,
+            31.124600005568936,
+            31.670099997427315,
+            33.8964999828022,
+            32.84410000196658
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H17",
+      "category": "section_retrieval",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 24.978179996833205,
+          "median_ms": 24.790800001937896,
+          "stdev_ms": 0.3584650317194391,
+          "p95_ms": 25.30720000504516,
+          "min_ms": 24.594999995315447,
+          "max_ms": 25.41089997976087,
+          "samples_ms": [
+            24.594999995315447,
+            25.30720000504516,
+            24.78700000210665,
+            25.41089997976087,
+            24.790800001937896
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.40086000994779,
+          "median_ms": 27.203000005101785,
+          "stdev_ms": 0.4082238576473352,
+          "p95_ms": 27.71490000304766,
+          "min_ms": 26.995899999747053,
+          "max_ms": 27.947200025664642,
+          "samples_ms": [
+            27.143300016177818,
+            27.71490000304766,
+            27.947200025664642,
+            27.203000005101785,
+            26.995899999747053
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.757440000073984,
+          "median_ms": 26.602500001899898,
+          "stdev_ms": 1.3107008375019449,
+          "p95_ms": 27.802899974631146,
+          "min_ms": 25.11780001805164,
+          "max_ms": 28.312200010987,
+          "samples_ms": [
+            27.802899974631146,
+            26.602500001899898,
+            28.312200010987,
+            25.95179999480024,
+            25.11780001805164
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.382540000369772,
+          "median_ms": 29.149999987566844,
+          "stdev_ms": 0.5234273497173874,
+          "p95_ms": 29.341000015847385,
+          "min_ms": 29.050300014205277,
+          "max_ms": 30.296399985672906,
+          "samples_ms": [
+            29.050300014205277,
+            29.149999987566844,
+            29.341000015847385,
+            30.296399985672906,
+            29.07499999855645
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 0.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 35.29446000466123,
+          "median_ms": 35.42970001581125,
+          "stdev_ms": 0.9391967657957334,
+          "p95_ms": 36.029100010637194,
+          "min_ms": 33.8847000093665,
+          "max_ms": 36.21140000177547,
+          "samples_ms": [
+            33.8847000093665,
+            34.91739998571575,
+            35.42970001581125,
+            36.029100010637194,
+            36.21140000177547
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H40",
+      "category": "terminology_semantic",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.100379998795688,
+          "median_ms": 27.816599991638213,
+          "stdev_ms": 1.6410024479017584,
+          "p95_ms": 28.367999999318272,
+          "min_ms": 26.447400014149025,
+          "max_ms": 30.736899992916733,
+          "samples_ms": [
+            26.447400014149025,
+            27.132999995956197,
+            28.367999999318272,
+            27.816599991638213,
+            30.736899992916733
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 32.26473999093287,
+          "median_ms": 31.578800000716,
+          "stdev_ms": 2.3483286462326225,
+          "p95_ms": 33.790299989050254,
+          "min_ms": 29.279799986397848,
+          "max_ms": 35.34360000048764,
+          "samples_ms": [
+            31.33119997801259,
+            35.34360000048764,
+            29.279799986397848,
+            31.578800000716,
+            33.790299989050254
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 39.84976000501774,
+          "median_ms": 41.198100021574646,
+          "stdev_ms": 2.657247972332571,
+          "p95_ms": 41.43480001948774,
+          "min_ms": 35.24989998550154,
+          "max_ms": 41.509500006213784,
+          "samples_ms": [
+            41.509500006213784,
+            39.856499992311,
+            41.43480001948774,
+            41.198100021574646,
+            35.24989998550154
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.407600002130494,
+          "median_ms": 26.358500006608665,
+          "stdev_ms": 1.2482508907419143,
+          "p95_ms": 26.385100005427375,
+          "min_ms": 25.15160001348704,
+          "max_ms": 28.444499999750406,
+          "samples_ms": [
+            26.358500006608665,
+            25.15160001348704,
+            25.69829998537898,
+            26.385100005427375,
+            28.444499999750406
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.01845999690704,
+          "median_ms": 27.011900005163625,
+          "stdev_ms": 0.5744721792593392,
+          "p95_ms": 27.392299991333857,
+          "min_ms": 26.349499996285886,
+          "max_ms": 27.755499992053956,
+          "samples_ms": [
+            26.58309999969788,
+            27.755499992053956,
+            26.349499996285886,
+            27.011900005163625,
+            27.392299991333857
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H41",
+      "category": "section_retrieval",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "recall_all_returned": 0.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 39.04835999710485,
+          "median_ms": 38.010199990822,
+          "stdev_ms": 3.7928207059723613,
+          "p95_ms": 38.885500020114705,
+          "min_ms": 35.98799998871982,
+          "max_ms": 45.53750000195578,
+          "samples_ms": [
+            35.98799998871982,
+            38.010199990822,
+            36.82059998391196,
+            38.885500020114705,
+            45.53750000195578
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 25.837279995903373,
+          "median_ms": 25.14559999690391,
+          "stdev_ms": 1.4925837742873722,
+          "p95_ms": 25.933299999451265,
+          "min_ms": 24.77250000811182,
+          "max_ms": 28.386699996190146,
+          "samples_ms": [
+            28.386699996190146,
+            25.14559999690391,
+            25.933299999451265,
+            24.77250000811182,
+            24.948299978859723
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 28.11199999996461,
+          "median_ms": 26.754299993626773,
+          "stdev_ms": 2.9028020064789772,
+          "p95_ms": 28.146399999968708,
+          "min_ms": 26.191400014795363,
+          "max_ms": 33.11849999590777,
+          "samples_ms": [
+            26.754299993626773,
+            28.146399999968708,
+            33.11849999590777,
+            26.349399995524436,
+            26.191400014795363
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 26.639040000736713,
+          "median_ms": 26.838699996005744,
+          "stdev_ms": 0.459675514876468,
+          "p95_ms": 26.861000020289794,
+          "min_ms": 25.890199991408736,
+          "max_ms": 27.06890000263229,
+          "samples_ms": [
+            26.536399993347004,
+            26.861000020289794,
+            27.06890000263229,
+            25.890199991408736,
+            26.838699996005744
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 31.318440003087744,
+          "median_ms": 30.174999992595986,
+          "stdev_ms": 2.922525412620648,
+          "p95_ms": 32.41780001553707,
+          "min_ms": 28.741100017214194,
+          "max_ms": 35.913200001232326,
+          "samples_ms": [
+            30.174999992595986,
+            32.41780001553707,
+            35.913200001232326,
+            29.345099988859147,
+            28.741100017214194
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H18",
+      "category": "numeric_detail",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.886080001713708,
+          "median_ms": 25.144999992335215,
+          "stdev_ms": 2.788248236093668,
+          "p95_ms": 29.32519998284988,
+          "min_ms": 24.63920001173392,
+          "max_ms": 30.477300024358556,
+          "samples_ms": [
+            24.84369999729097,
+            30.477300024358556,
+            25.144999992335215,
+            29.32519998284988,
+            24.63920001173392
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.609620003728196,
+          "median_ms": 26.424800016684458,
+          "stdev_ms": 0.6058591534572175,
+          "p95_ms": 26.465600007213652,
+          "min_ms": 26.124099997105077,
+          "max_ms": 27.66719998908229,
+          "samples_ms": [
+            26.124099997105077,
+            26.465600007213652,
+            26.3664000085555,
+            27.66719998908229,
+            26.424800016684458
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.98051999998279,
+          "median_ms": 27.38000001409091,
+          "stdev_ms": 2.5290458950659853,
+          "p95_ms": 27.928600000450388,
+          "min_ms": 25.371499999891967,
+          "max_ms": 32.17009999207221,
+          "samples_ms": [
+            27.38000001409091,
+            32.17009999207221,
+            27.05239999340847,
+            25.371499999891967,
+            27.928600000450388
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.974919988308102,
+          "median_ms": 28.90309999929741,
+          "stdev_ms": 2.359304970559797,
+          "p95_ms": 30.18909998354502,
+          "min_ms": 28.20529998280108,
+          "max_ms": 33.979999978328124,
+          "samples_ms": [
+            33.979999978328124,
+            28.597099997568876,
+            28.20529998280108,
+            28.90309999929741,
+            30.18909998354502
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 36.94978000712581,
+          "median_ms": 34.20870000263676,
+          "stdev_ms": 4.491204987249714,
+          "p95_ms": 40.15610000351444,
+          "min_ms": 32.97570001450367,
+          "max_ms": 43.22859999956563,
+          "samples_ms": [
+            32.97570001450367,
+            34.20870000263676,
+            34.179800015408546,
+            43.22859999956563,
+            40.15610000351444
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H19",
+      "category": "section_retrieval",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.294759994605556,
+          "median_ms": 28.44660001574084,
+          "stdev_ms": 2.661513973879821,
+          "p95_ms": 28.890799992950633,
+          "min_ms": 25.461999990511686,
+          "max_ms": 32.3169999755919,
+          "samples_ms": [
+            25.461999990511686,
+            26.357399998232722,
+            28.890799992950633,
+            28.44660001574084,
+            32.3169999755919
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.28750000614673,
+          "median_ms": 31.102200009627268,
+          "stdev_ms": 1.0969041588986848,
+          "p95_ms": 31.69000000343658,
+          "min_ms": 30.232699995394796,
+          "max_ms": 32.961899996735156,
+          "samples_ms": [
+            32.961899996735156,
+            30.450700025539845,
+            31.69000000343658,
+            30.232699995394796,
+            31.102200009627268
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 34.68578000320122,
+          "median_ms": 34.871800016844645,
+          "stdev_ms": 0.5122492960474994,
+          "p95_ms": 34.913099982077256,
+          "min_ms": 34.10630000871606,
+          "max_ms": 35.32280001672916,
+          "samples_ms": [
+            34.871800016844645,
+            34.10630000871606,
+            34.913099982077256,
+            34.21489999163896,
+            35.32280001672916
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.02078000199981,
+          "median_ms": 26.366000005509704,
+          "stdev_ms": 0.9534885087834396,
+          "p95_ms": 26.744100003270432,
+          "min_ms": 24.685400014277548,
+          "max_ms": 26.92080000997521,
+          "samples_ms": [
+            24.685400014277548,
+            26.744100003270432,
+            25.387599976966158,
+            26.366000005509704,
+            26.92080000997521
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.33418000373058,
+          "median_ms": 28.038299991749227,
+          "stdev_ms": 1.8305477156565175,
+          "p95_ms": 28.37270000600256,
+          "min_ms": 26.148100005229935,
+          "max_ms": 31.22180001810193,
+          "samples_ms": [
+            31.22180001810193,
+            28.038299991749227,
+            28.37270000600256,
+            26.148100005229935,
+            27.889999997569248
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H20",
+      "category": "multi_part",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 8,
+        "latency": {
+          "mean_ms": 46.20353999780491,
+          "median_ms": 46.102199994493276,
+          "stdev_ms": 1.093710402835476,
+          "p95_ms": 46.61970000597648,
+          "min_ms": 45.0690999859944,
+          "max_ms": 47.83369999495335,
+          "samples_ms": [
+            47.83369999495335,
+            46.102199994493276,
+            45.39300000760704,
+            46.61970000597648,
+            45.0690999859944
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.324280007975176,
+          "median_ms": 26.062599994475022,
+          "stdev_ms": 0.8213502219751259,
+          "p95_ms": 26.10570000251755,
+          "min_ms": 25.776400027098134,
+          "max_ms": 27.774700021836907,
+          "samples_ms": [
+            25.901999993948266,
+            26.062599994475022,
+            25.776400027098134,
+            27.774700021836907,
+            26.10570000251755
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.57287999847904,
+          "median_ms": 27.544099983060732,
+          "stdev_ms": 0.5894521405888309,
+          "p95_ms": 27.841600007377565,
+          "min_ms": 26.997300010407344,
+          "max_ms": 28.422300005331635,
+          "samples_ms": [
+            27.544099983060732,
+            27.841600007377565,
+            26.997300010407344,
+            27.059099986217916,
+            28.422300005331635
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.362779995426536,
+          "median_ms": 28.87790001113899,
+          "stdev_ms": 1.4765377535274085,
+          "p95_ms": 29.70899999490939,
+          "min_ms": 27.74289998342283,
+          "max_ms": 31.690399977378547,
+          "samples_ms": [
+            27.74289998342283,
+            28.79370001028292,
+            28.87790001113899,
+            31.690399977378547,
+            29.70899999490939
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 33.49676000070758,
+          "median_ms": 32.61779999593273,
+          "stdev_ms": 3.034045829545625,
+          "p95_ms": 33.720500010531396,
+          "min_ms": 30.653199995867908,
+          "max_ms": 38.54710000450723,
+          "samples_ms": [
+            33.720500010531396,
+            38.54710000450723,
+            30.653199995867908,
+            31.945199996698648,
+            32.61779999593273
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H21",
+      "category": "multi_part",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.407440003706142,
+          "median_ms": 29.257000016514212,
+          "stdev_ms": 0.796496722142567,
+          "p95_ms": 30.122900003334507,
+          "min_ms": 28.362899989588186,
+          "max_ms": 30.278499994892627,
+          "samples_ms": [
+            30.278499994892627,
+            28.362899989588186,
+            29.257000016514212,
+            30.122900003334507,
+            29.01590001420118
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.332859999500215,
+          "median_ms": 27.75479998672381,
+          "stdev_ms": 2.2600108217608286,
+          "p95_ms": 28.352399996947497,
+          "min_ms": 25.898799998685718,
+          "max_ms": 32.03070000745356,
+          "samples_ms": [
+            32.03070000745356,
+            27.62760000769049,
+            25.898799998685718,
+            28.352399996947497,
+            27.75479998672381
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.750380002427846,
+          "median_ms": 30.4306999896653,
+          "stdev_ms": 1.579764698210804,
+          "p95_ms": 31.691100011812523,
+          "min_ms": 29.209300002548844,
+          "max_ms": 32.970700005535036,
+          "samples_ms": [
+            31.691100011812523,
+            29.45010000257753,
+            29.209300002548844,
+            30.4306999896653,
+            32.970700005535036
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 32.3832800029777,
+          "median_ms": 31.809200008865446,
+          "stdev_ms": 1.365928385266403,
+          "p95_ms": 32.41750001325272,
+          "min_ms": 31.290799990529194,
+          "max_ms": 34.71710000303574,
+          "samples_ms": [
+            32.41750001325272,
+            31.681799999205396,
+            31.290799990529194,
+            31.809200008865446,
+            34.71710000303574
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 37.318599998252466,
+          "median_ms": 36.8165000109002,
+          "stdev_ms": 2.7872892545019052,
+          "p95_ms": 39.52489999937825,
+          "min_ms": 34.658499993383884,
+          "max_ms": 40.83159999572672,
+          "samples_ms": [
+            34.658499993383884,
+            36.8165000109002,
+            40.83159999572672,
+            39.52489999937825,
+            34.76149999187328
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H22",
+      "category": "multi_part",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.30159999523312,
+          "median_ms": 29.17149997665547,
+          "stdev_ms": 0.571747179388879,
+          "p95_ms": 29.375699989032,
+          "min_ms": 28.656300011789426,
+          "max_ms": 30.210299999453127,
+          "samples_ms": [
+            30.210299999453127,
+            29.09419999923557,
+            28.656300011789426,
+            29.375699989032,
+            29.17149997665547
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.940619995817542,
+          "median_ms": 31.265199999324977,
+          "stdev_ms": 1.0673573644310859,
+          "p95_ms": 31.48689999943599,
+          "min_ms": 29.439200006891042,
+          "max_ms": 32.1778999932576,
+          "samples_ms": [
+            32.1778999932576,
+            30.333899980178103,
+            29.439200006891042,
+            31.265199999324977,
+            31.48689999943599
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 48.27820000355132,
+          "median_ms": 47.78369999257848,
+          "stdev_ms": 5.341163283202426,
+          "p95_ms": 53.15740001969971,
+          "min_ms": 40.771400002995506,
+          "max_ms": 53.636299999197945,
+          "samples_ms": [
+            40.771400002995506,
+            53.15740001969971,
+            46.04220000328496,
+            53.636299999197945,
+            47.78369999257848
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 26.568439998663962,
+          "median_ms": 26.358899980550632,
+          "stdev_ms": 0.5824298287154117,
+          "p95_ms": 26.690300001064315,
+          "min_ms": 26.020599994808435,
+          "max_ms": 27.517100010300055,
+          "samples_ms": [
+            26.690300001064315,
+            27.517100010300055,
+            26.358899980550632,
+            26.25530000659637,
+            26.020599994808435
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "term_coverage": 0.0,
+        "latency": {
+          "mean_ms": 29.987420001998544,
+          "median_ms": 29.476099996827543,
+          "stdev_ms": 2.0561435433656303,
+          "p95_ms": 29.564199998276308,
+          "min_ms": 28.62880000611767,
+          "max_ms": 33.583000011276454,
+          "samples_ms": [
+            29.476099996827543,
+            33.583000011276454,
+            29.564199998276308,
+            28.62880000611767,
+            28.684999997494742
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H23",
+      "category": "terminology_semantic",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 35.2426000055857,
+          "median_ms": 33.135400008177385,
+          "stdev_ms": 3.3711885121433975,
+          "p95_ms": 38.801100017735735,
+          "min_ms": 32.23230000003241,
+          "max_ms": 39.0287000045646,
+          "samples_ms": [
+            39.0287000045646,
+            38.801100017735735,
+            32.23230000003241,
+            33.015499997418374,
+            33.135400008177385
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.024719996144995,
+          "median_ms": 24.522299994714558,
+          "stdev_ms": 1.410866140177642,
+          "p95_ms": 24.97379999840632,
+          "min_ms": 23.934800003189594,
+          "max_ms": 27.45399999548681,
+          "samples_ms": [
+            24.522299994714558,
+            27.45399999548681,
+            23.934800003189594,
+            24.238699988927692,
+            24.97379999840632
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.70623999624513,
+          "median_ms": 27.407599991420284,
+          "stdev_ms": 2.280361513384299,
+          "p95_ms": 30.973399989306927,
+          "min_ms": 26.477400009753183,
+          "max_ms": 31.36269998503849,
+          "samples_ms": [
+            30.973399989306927,
+            27.407599991420284,
+            31.36269998503849,
+            27.310100005706772,
+            26.477400009753183
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.412759989965707,
+          "median_ms": 27.07779998308979,
+          "stdev_ms": 1.3112884553864392,
+          "p95_ms": 28.71029998641461,
+          "min_ms": 25.85700000054203,
+          "max_ms": 28.824199980590492,
+          "samples_ms": [
+            25.85700000054203,
+            26.594499999191612,
+            28.71029998641461,
+            28.824199980590492,
+            27.07779998308979
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.604120007250458,
+          "median_ms": 30.361400014953688,
+          "stdev_ms": 3.057924791047326,
+          "p95_ms": 32.06470000441186,
+          "min_ms": 29.33119999943301,
+          "max_ms": 36.72430000733584,
+          "samples_ms": [
+            30.361400014953688,
+            29.53900001011789,
+            29.33119999943301,
+            32.06470000441186,
+            36.72430000733584
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H24",
+      "category": "terminology_semantic",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.666779996594414,
+          "median_ms": 26.552299998002127,
+          "stdev_ms": 1.2843847021026848,
+          "p95_ms": 26.997199980542064,
+          "min_ms": 24.964100011857226,
+          "max_ms": 28.521900007035583,
+          "samples_ms": [
+            28.521900007035583,
+            26.29839998553507,
+            24.964100011857226,
+            26.997199980542064,
+            26.552299998002127
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.08034000825137,
+          "median_ms": 27.669900009641424,
+          "stdev_ms": 1.2850635845958103,
+          "p95_ms": 28.109600010793656,
+          "min_ms": 25.375099998200312,
+          "max_ms": 28.192900004796684,
+          "samples_ms": [
+            28.192900004796684,
+            25.375099998200312,
+            27.669900009641424,
+            28.109600010793656,
+            26.05420001782477
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.085219998843968,
+          "median_ms": 26.724600000306964,
+          "stdev_ms": 1.535923125444095,
+          "p95_ms": 26.926999998977408,
+          "min_ms": 25.69109998876229,
+          "max_ms": 29.701199993724003,
+          "samples_ms": [
+            25.69109998876229,
+            26.382200012449175,
+            26.724600000306964,
+            26.926999998977408,
+            29.701199993724003
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 32.257780007785186,
+          "median_ms": 31.536300026345998,
+          "stdev_ms": 2.7742481179270504,
+          "p95_ms": 34.6723000111524,
+          "min_ms": 28.92109999083914,
+          "max_ms": 35.52410000702366,
+          "samples_ms": [
+            28.92109999083914,
+            30.63510000356473,
+            31.536300026345998,
+            35.52410000702366,
+            34.6723000111524
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 39.06908000353724,
+          "median_ms": 37.94579999521375,
+          "stdev_ms": 4.110717024494711,
+          "p95_ms": 40.20760001731105,
+          "min_ms": 34.8989000194706,
+          "max_ms": 45.563099993159994,
+          "samples_ms": [
+            36.72999999253079,
+            45.563099993159994,
+            40.20760001731105,
+            37.94579999521375,
+            34.8989000194706
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H25",
+      "category": "multi_part",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.626519998535514,
+          "median_ms": 26.333399990107864,
+          "stdev_ms": 0.8792118451429958,
+          "p95_ms": 27.249199978541583,
+          "min_ms": 25.63469999586232,
+          "max_ms": 27.798900002380833,
+          "samples_ms": [
+            26.11640002578497,
+            27.798900002380833,
+            27.249199978541583,
+            26.333399990107864,
+            25.63469999586232
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 32.83324000076391,
+          "median_ms": 30.696900008479133,
+          "stdev_ms": 5.650358560433279,
+          "p95_ms": 32.59329998400062,
+          "min_ms": 27.84229998360388,
+          "max_ms": 42.47660000692122,
+          "samples_ms": [
+            42.47660000692122,
+            27.84229998360388,
+            30.696900008479133,
+            30.557100020814687,
+            32.59329998400062
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 37.40920000127517,
+          "median_ms": 36.74860001774505,
+          "stdev_ms": 1.106833651505069,
+          "p95_ms": 38.49009997793473,
+          "min_ms": 36.471800005529076,
+          "max_ms": 38.73620001832023,
+          "samples_ms": [
+            36.74860001774505,
+            36.471800005529076,
+            36.599299986846745,
+            38.73620001832023,
+            38.49009997793473
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.69999999832362,
+          "median_ms": 25.238500005798414,
+          "stdev_ms": 1.387842471829002,
+          "p95_ms": 25.777900009416044,
+          "min_ms": 24.627699982374907,
+          "max_ms": 28.052100009517744,
+          "samples_ms": [
+            28.052100009517744,
+            25.238500005798414,
+            24.627699982374907,
+            25.777900009416044,
+            24.803799984510988
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.612399997655302,
+          "median_ms": 27.74180000415072,
+          "stdev_ms": 1.511794672791087,
+          "p95_ms": 30.258400016464293,
+          "min_ms": 27.36819998244755,
+          "max_ms": 30.264000000897795,
+          "samples_ms": [
+            27.429599984316155,
+            30.258400016464293,
+            30.264000000897795,
+            27.36819998244755,
+            27.74180000415072
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H42",
+      "category": "factual_extraction",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 5,
+        "latency": {
+          "mean_ms": 39.445940003497526,
+          "median_ms": 40.49549999763258,
+          "stdev_ms": 2.7230245254849996,
+          "p95_ms": 40.74600001331419,
+          "min_ms": 34.60040001664311,
+          "max_ms": 41.06379998847842,
+          "samples_ms": [
+            34.60040001664311,
+            40.324000001419336,
+            41.06379998847842,
+            40.74600001331419,
+            40.49549999763258
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 24.345559999346733,
+          "median_ms": 23.898799991002306,
+          "stdev_ms": 1.4046343917267132,
+          "p95_ms": 23.992200003704056,
+          "min_ms": 23.341699998127297,
+          "max_ms": 26.818000013008714,
+          "samples_ms": [
+            23.898799991002306,
+            26.818000013008714,
+            23.992200003704056,
+            23.341699998127297,
+            23.677099990891293
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.7791799986735,
+          "median_ms": 27.496599999722093,
+          "stdev_ms": 2.7997011517055905,
+          "p95_ms": 28.181099973153323,
+          "min_ms": 27.16830000281334,
+          "max_ms": 33.73900000588037,
+          "samples_ms": [
+            27.496599999722093,
+            33.73900000588037,
+            27.16830000281334,
+            27.310900011798367,
+            28.181099973153323
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.91433999571018,
+          "median_ms": 26.248399983160198,
+          "stdev_ms": 1.561438164467674,
+          "p95_ms": 27.306899981340393,
+          "min_ms": 25.61829998739995,
+          "max_ms": 29.465900006471202,
+          "samples_ms": [
+            25.61829998739995,
+            27.306899981340393,
+            25.932200020179152,
+            26.248399983160198,
+            29.465900006471202
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.207979997387156,
+          "median_ms": 28.25440000742674,
+          "stdev_ms": 0.564400451903592,
+          "p95_ms": 28.702299983706325,
+          "min_ms": 27.50289998948574,
+          "max_ms": 28.798599989386275,
+          "samples_ms": [
+            28.702299983706325,
+            28.798599989386275,
+            28.25440000742674,
+            27.7817000169307,
+            27.50289998948574
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H26",
+      "category": "numeric_detail",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.2,
+        "ndcg": 0.38685280723454163,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.93117999495007,
+          "median_ms": 25.99339999142103,
+          "stdev_ms": 0.8712070097462329,
+          "p95_ms": 26.122500014025718,
+          "min_ms": 24.91629999713041,
+          "max_ms": 27.22719998564571,
+          "samples_ms": [
+            27.22719998564571,
+            26.122500014025718,
+            25.396499986527488,
+            25.99339999142103,
+            24.91629999713041
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.954359999625012,
+          "median_ms": 28.782599983969703,
+          "stdev_ms": 0.6622273897336374,
+          "p95_ms": 29.321199981495738,
+          "min_ms": 28.170700010377914,
+          "max_ms": 29.882200004067272,
+          "samples_ms": [
+            28.170700010377914,
+            28.782599983969703,
+            28.615100018214434,
+            29.321199981495738,
+            29.882200004067272
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.30291999853216,
+          "median_ms": 28.393899992806837,
+          "stdev_ms": 2.2523523841895137,
+          "p95_ms": 28.908599982969463,
+          "min_ms": 26.0660000203643,
+          "max_ms": 31.69289999641478,
+          "samples_ms": [
+            28.393899992806837,
+            31.69289999641478,
+            26.0660000203643,
+            28.908599982969463,
+            26.453200000105426
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.814340001437813,
+          "median_ms": 32.51520000048913,
+          "stdev_ms": 2.15570560003513,
+          "p95_ms": 33.000600000377744,
+          "min_ms": 28.835600009188056,
+          "max_ms": 34.26029998809099,
+          "samples_ms": [
+            33.000600000377744,
+            34.26029998809099,
+            28.835600009188056,
+            30.460000009043142,
+            32.51520000048913
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 4,
+        "latency": {
+          "mean_ms": 42.943719995673746,
+          "median_ms": 41.076699999393895,
+          "stdev_ms": 4.932381687383555,
+          "p95_ms": 46.82879999745637,
+          "min_ms": 38.65599998971447,
+          "max_ms": 49.45319998660125,
+          "samples_ms": [
+            38.70390000520274,
+            41.076699999393895,
+            49.45319998660125,
+            46.82879999745637,
+            38.65599998971447
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H27",
+      "category": "factual_extraction",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.217579999705777,
+          "median_ms": 26.370600011432543,
+          "stdev_ms": 2.547504990237509,
+          "p95_ms": 28.37720001116395,
+          "min_ms": 24.83340000617318,
+          "max_ms": 31.087699986528605,
+          "samples_ms": [
+            28.37720001116395,
+            31.087699986528605,
+            24.83340000617318,
+            26.370600011432543,
+            25.418999983230606
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.372720001265407,
+          "median_ms": 28.394599998136982,
+          "stdev_ms": 2.3578519917361582,
+          "p95_ms": 30.279099999461323,
+          "min_ms": 27.19470000010915,
+          "max_ms": 33.0651999975089,
+          "samples_ms": [
+            27.19470000010915,
+            28.394599998136982,
+            27.93000001111068,
+            30.279099999461323,
+            33.0651999975089
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 4,
+        "latency": {
+          "mean_ms": 40.07889999775216,
+          "median_ms": 39.17559998808429,
+          "stdev_ms": 4.0417607074532,
+          "p95_ms": 43.103500007418916,
+          "min_ms": 35.802200000034645,
+          "max_ms": 45.325899991439655,
+          "samples_ms": [
+            39.17559998808429,
+            35.802200000034645,
+            45.325899991439655,
+            43.103500007418916,
+            36.9873000017833
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.408140005310997,
+          "median_ms": 25.038199994014576,
+          "stdev_ms": 2.3950127730648587,
+          "p95_ms": 26.40090000932105,
+          "min_ms": 23.266000003786758,
+          "max_ms": 29.003200004808605,
+          "samples_ms": [
+            26.40090000932105,
+            29.003200004808605,
+            23.332400014624,
+            25.038199994014576,
+            23.266000003786758
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.4117399987299,
+          "median_ms": 26.235500001348555,
+          "stdev_ms": 0.619807226727649,
+          "p95_ms": 26.828600006410852,
+          "min_ms": 25.74569999706,
+          "max_ms": 27.256000001216307,
+          "samples_ms": [
+            26.235500001348555,
+            26.828600006410852,
+            25.74569999706,
+            25.992899987613782,
+            27.256000001216307
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H28",
+      "category": "factual_extraction",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 4,
+        "latency": {
+          "mean_ms": 43.84588000248186,
+          "median_ms": 42.04690002370626,
+          "stdev_ms": 6.093875455022016,
+          "p95_ms": 45.79450000892393,
+          "min_ms": 38.59119999106042,
+          "max_ms": 53.499999979976565,
+          "samples_ms": [
+            45.79450000892393,
+            38.59119999106042,
+            39.29680000874214,
+            42.04690002370626,
+            53.499999979976565
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.225879999808967,
+          "median_ms": 28.177900006994605,
+          "stdev_ms": 3.127330878957958,
+          "p95_ms": 30.871700000716373,
+          "min_ms": 24.89380000042729,
+          "max_ms": 31.813699984923005,
+          "samples_ms": [
+            30.871700000716373,
+            24.89380000042729,
+            25.37230000598356,
+            28.177900006994605,
+            31.813699984923005
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.154580004978925,
+          "median_ms": 29.12230000947602,
+          "stdev_ms": 0.3096646191530099,
+          "p95_ms": 29.408100002910942,
+          "min_ms": 28.73859999817796,
+          "max_ms": 29.5031999994535,
+          "samples_ms": [
+            29.12230000947602,
+            29.408100002910942,
+            29.5031999994535,
+            29.0007000148762,
+            28.73859999817796
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.427440002793446,
+          "median_ms": 27.430699992692098,
+          "stdev_ms": 0.5894216884828631,
+          "p95_ms": 27.441899990662932,
+          "min_ms": 26.740600005723536,
+          "max_ms": 28.351000015391037,
+          "samples_ms": [
+            27.441899990662932,
+            27.173000009497628,
+            27.430699992692098,
+            26.740600005723536,
+            28.351000015391037
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.25,
+        "ndcg": 0.43067655807339306,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.900479999603704,
+          "median_ms": 31.060799985425547,
+          "stdev_ms": 1.9570670587784282,
+          "p95_ms": 32.97510000993498,
+          "min_ms": 29.709700000239536,
+          "max_ms": 34.71529998932965,
+          "samples_ms": [
+            34.71529998932965,
+            31.060799985425547,
+            31.041500013088807,
+            29.709700000239536,
+            32.97510000993498
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H29",
+      "category": "terminology_semantic",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.681920003145933,
+          "median_ms": 29.290800011949614,
+          "stdev_ms": 3.414089574229288,
+          "p95_ms": 30.0279000075534,
+          "min_ms": 24.67750001233071,
+          "max_ms": 33.33340000244789,
+          "samples_ms": [
+            33.33340000244789,
+            26.079999981448054,
+            24.67750001233071,
+            29.290800011949614,
+            30.0279000075534
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.487600001040846,
+          "median_ms": 27.409200003603473,
+          "stdev_ms": 0.7655269375066664,
+          "p95_ms": 27.8554999968037,
+          "min_ms": 26.36059999349527,
+          "max_ms": 28.445700008887798,
+          "samples_ms": [
+            27.409200003603473,
+            27.367000002413988,
+            28.445700008887798,
+            26.36059999349527,
+            27.8554999968037
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.584020002745092,
+          "median_ms": 28.604199993424118,
+          "stdev_ms": 1.1369920363326165,
+          "p95_ms": 29.530800005886704,
+          "min_ms": 26.76810001139529,
+          "max_ms": 29.563599993707612,
+          "samples_ms": [
+            26.76810001139529,
+            29.530800005886704,
+            29.563599993707612,
+            28.453400009311736,
+            28.604199993424118
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.642700002295896,
+          "median_ms": 29.856500012101606,
+          "stdev_ms": 0.6909432505766993,
+          "p95_ms": 29.903499991632998,
+          "min_ms": 28.483500005677342,
+          "max_ms": 30.31500001088716,
+          "samples_ms": [
+            29.903499991632998,
+            30.31500001088716,
+            29.654999991180375,
+            29.856500012101606,
+            28.483500005677342
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 4,
+        "latency": {
+          "mean_ms": 53.53455999866128,
+          "median_ms": 52.31239998829551,
+          "stdev_ms": 11.550697466086381,
+          "p95_ms": 60.485800000606105,
+          "min_ms": 41.905099991708994,
+          "max_ms": 69.3535000027623,
+          "samples_ms": [
+            41.905099991708994,
+            43.61600000993349,
+            52.31239998829551,
+            60.485800000606105,
+            69.3535000027623
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H30",
+      "category": "numeric_detail",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 32.02920000185259,
+          "median_ms": 30.851000017719343,
+          "stdev_ms": 3.339038110373123,
+          "p95_ms": 35.35109999938868,
+          "min_ms": 28.350200009299442,
+          "max_ms": 35.75149999232963,
+          "samples_ms": [
+            35.75149999232963,
+            30.851000017719343,
+            35.35109999938868,
+            29.84219999052584,
+            28.350200009299442
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.279540003743023,
+          "median_ms": 30.555899982573465,
+          "stdev_ms": 2.024385319758377,
+          "p95_ms": 31.196299998555332,
+          "min_ms": 29.615100007504225,
+          "max_ms": 34.75550000439398,
+          "samples_ms": [
+            34.75550000439398,
+            30.555899982573465,
+            29.615100007504225,
+            30.274900025688112,
+            31.196299998555332
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 4,
+        "latency": {
+          "mean_ms": 40.63140000216663,
+          "median_ms": 40.68310000002384,
+          "stdev_ms": 0.5557355943602337,
+          "p95_ms": 40.90760002145544,
+          "min_ms": 39.753599994583055,
+          "max_ms": 41.24890000093728,
+          "samples_ms": [
+            39.753599994583055,
+            40.56379999383353,
+            40.90760002145544,
+            40.68310000002384,
+            41.24890000093728
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 26.51573999901302,
+          "median_ms": 26.309099979698658,
+          "stdev_ms": 0.5839331030600192,
+          "p95_ms": 27.09109999705106,
+          "min_ms": 25.882500020088628,
+          "max_ms": 27.17440002015792,
+          "samples_ms": [
+            25.882500020088628,
+            26.309099979698658,
+            27.17440002015792,
+            26.121599978068843,
+            27.09109999705106
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.408160004299134,
+          "median_ms": 29.358400002820417,
+          "stdev_ms": 2.211108628008576,
+          "p95_ms": 32.28750001289882,
+          "min_ms": 28.47960000508465,
+          "max_ms": 33.259699994232506,
+          "samples_ms": [
+            28.65560000645928,
+            28.47960000508465,
+            33.259699994232506,
+            32.28750001289882,
+            29.358400002820417
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H31",
+      "category": "section_retrieval",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 4,
+        "latency": {
+          "mean_ms": 42.05045999842696,
+          "median_ms": 41.93540001870133,
+          "stdev_ms": 0.6679113805123739,
+          "p95_ms": 42.21139999572188,
+          "min_ms": 41.21480000321753,
+          "max_ms": 43.051599990576506,
+          "samples_ms": [
+            42.21139999572188,
+            41.93540001870133,
+            41.83909998391755,
+            41.21480000321753,
+            43.051599990576506
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 25.229439995018765,
+          "median_ms": 25.048500014236197,
+          "stdev_ms": 0.7909759226519063,
+          "p95_ms": 25.427999993553385,
+          "min_ms": 24.359699978958815,
+          "max_ms": 26.465100003406405,
+          "samples_ms": [
+            25.048500014236197,
+            24.845899984939024,
+            25.427999993553385,
+            24.359699978958815,
+            26.465100003406405
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.85994000826031,
+          "median_ms": 28.121300012571737,
+          "stdev_ms": 2.7546914059661187,
+          "p95_ms": 28.6721000156831,
+          "min_ms": 26.857899996684864,
+          "max_ms": 33.60110000357963,
+          "samples_ms": [
+            33.60110000357963,
+            27.047300012782216,
+            26.857899996684864,
+            28.6721000156831,
+            28.121300012571737
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.625939995981753,
+          "median_ms": 27.40060002543032,
+          "stdev_ms": 2.211872570254401,
+          "p95_ms": 30.558699974790215,
+          "min_ms": 26.76830001291819,
+          "max_ms": 31.46159998141229,
+          "samples_ms": [
+            30.558699974790215,
+            27.40060002543032,
+            31.46159998141229,
+            26.76830001291819,
+            26.940499985357746
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.13654000335373,
+          "median_ms": 29.771100002108142,
+          "stdev_ms": 2.334860488622412,
+          "p95_ms": 31.56560001662001,
+          "min_ms": 29.56999998423271,
+          "max_ms": 35.04990000510588,
+          "samples_ms": [
+            29.56999998423271,
+            31.56560001662001,
+            35.04990000510588,
+            29.726100008701906,
+            29.771100002108142
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H43",
+      "category": "multi_part",
+      "order": [
+        "dense",
+        "hybrid",
+        "production"
+      ],
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.569939999375492,
+          "median_ms": 25.352900003781542,
+          "stdev_ms": 3.2796765720774945,
+          "p95_ms": 30.265499983215705,
+          "min_ms": 25.0421000237111,
+          "max_ms": 31.937799998559058,
+          "samples_ms": [
+            25.352900003781542,
+            30.265499983215705,
+            25.0421000237111,
+            25.251399987610057,
+            31.937799998559058
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.145820001373067,
+          "median_ms": 27.902400004677474,
+          "stdev_ms": 0.7424612249332998,
+          "p95_ms": 28.669000021182,
+          "min_ms": 27.350799995474517,
+          "max_ms": 29.14749999763444,
+          "samples_ms": [
+            29.14749999763444,
+            27.659399987896904,
+            28.669000021182,
+            27.902400004677474,
+            27.350799995474517
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.686999997124076,
+          "median_ms": 30.985599994892254,
+          "stdev_ms": 2.060371276284751,
+          "p95_ms": 31.717400008346885,
+          "min_ms": 27.196899987757206,
+          "max_ms": 32.5779999839142,
+          "samples_ms": [
+            30.957100010709837,
+            32.5779999839142,
+            31.717400008346885,
+            27.196899987757206,
+            30.985599994892254
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 34.239220002200454,
+          "median_ms": 32.681899989256635,
+          "stdev_ms": 4.410239620416035,
+          "p95_ms": 36.37820002040826,
+          "min_ms": 30.377699993550777,
+          "max_ms": 40.90459999861196,
+          "samples_ms": [
+            32.681899989256635,
+            40.90459999861196,
+            36.37820002040826,
+            30.377699993550777,
+            30.853700009174645
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 4,
+        "latency": {
+          "mean_ms": 53.63990000332706,
+          "median_ms": 49.75090001244098,
+          "stdev_ms": 8.695188814756603,
+          "p95_ms": 51.07210000278428,
+          "min_ms": 48.7583999929484,
+          "max_ms": 69.12229998852126,
+          "samples_ms": [
+            51.07210000278428,
+            49.75090001244098,
+            49.49580001994036,
+            48.7583999929484,
+            69.12229998852126
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H44",
+      "category": "section_retrieval",
+      "order": [
+        "hybrid",
+        "production",
+        "dense"
+      ],
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.877000003354624,
+          "median_ms": 27.414500014856458,
+          "stdev_ms": 1.9553023734287587,
+          "p95_ms": 27.663699991535395,
+          "min_ms": 26.201400003628805,
+          "max_ms": 31.22770000481978,
+          "samples_ms": [
+            31.22770000481978,
+            26.87770000193268,
+            27.663699991535395,
+            26.201400003628805,
+            27.414500014856458
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 31.90098000341095,
+          "median_ms": 31.258100003469735,
+          "stdev_ms": 2.4665312255818193,
+          "p95_ms": 34.2808999994304,
+          "min_ms": 28.917199990246445,
+          "max_ms": 34.59530000691302,
+          "samples_ms": [
+            28.917199990246445,
+            31.258100003469735,
+            34.2808999994304,
+            34.59530000691302,
+            30.453400016995147
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 4,
+        "latency": {
+          "mean_ms": 47.11848000297323,
+          "median_ms": 44.2093999881763,
+          "stdev_ms": 5.528775708974225,
+          "p95_ms": 47.71660000551492,
+          "min_ms": 43.45589998411015,
+          "max_ms": 56.51590001070872,
+          "samples_ms": [
+            56.51590001070872,
+            47.71660000551492,
+            43.45589998411015,
+            43.694600026356056,
+            44.2093999881763
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 27.1630399976857,
+          "median_ms": 26.52489999309182,
+          "stdev_ms": 2.092036263183017,
+          "p95_ms": 28.782100009266287,
+          "min_ms": 24.627899983897805,
+          "max_ms": 29.789899999741465,
+          "samples_ms": [
+            26.52489999309182,
+            28.782100009266287,
+            24.627899983897805,
+            26.090400002431124,
+            29.789899999741465
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg": 0.5,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.521279997425154,
+          "median_ms": 28.575000003911555,
+          "stdev_ms": 2.647946064739065,
+          "p95_ms": 30.015099997399375,
+          "min_ms": 27.430800022557378,
+          "max_ms": 33.89949997654185,
+          "samples_ms": [
+            27.685999986715615,
+            27.430800022557378,
+            28.575000003911555,
+            30.015099997399375,
+            33.89949997654185
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    },
+    {
+      "id": "H45",
+      "category": "terminology_semantic",
+      "order": [
+        "production",
+        "dense",
+        "hybrid"
+      ],
+      "C_production": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "recall_all_returned": 1.0,
+        "returned": 4,
+        "latency": {
+          "mean_ms": 47.72023999830708,
+          "median_ms": 48.346800002036616,
+          "stdev_ms": 1.6898628320818943,
+          "p95_ms": 48.47660000086762,
+          "min_ms": 45.51919997902587,
+          "max_ms": 49.75390000618063,
+          "samples_ms": [
+            48.346800002036616,
+            49.75390000618063,
+            46.50470000342466,
+            45.51919997902587,
+            48.47660000086762
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_dense": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 24.805900000501424,
+          "median_ms": 25.14730000984855,
+          "stdev_ms": 0.5517622933763311,
+          "p95_ms": 25.15909998328425,
+          "min_ms": 24.07760001369752,
+          "max_ms": 25.294699997175485,
+          "samples_ms": [
+            25.15909998328425,
+            24.07760001369752,
+            24.350799998501316,
+            25.294699997175485,
+            25.14730000984855
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_dense": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 28.290679992642254,
+          "median_ms": 27.99179998692125,
+          "stdev_ms": 1.7338239497361008,
+          "p95_ms": 28.35060001234524,
+          "min_ms": 26.31350001320243,
+          "max_ms": 31.067099975189194,
+          "samples_ms": [
+            31.067099975189194,
+            26.31350001320243,
+            27.730399975553155,
+            27.99179998692125,
+            28.35060001234524
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "A_global_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 29.888180003035814,
+          "median_ms": 29.201900004409254,
+          "stdev_ms": 2.495305997451139,
+          "p95_ms": 31.80269998847507,
+          "min_ms": 27.07640000153333,
+          "max_ms": 33.089300006395206,
+          "samples_ms": [
+            33.089300006395206,
+            27.07640000153333,
+            29.201900004409254,
+            28.27060001436621,
+            31.80269998847507
+          ],
+          "deterministic_across_reps": true
+        }
+      },
+      "B_scoped_hybrid": {
+        "recall": 1.0,
+        "mrr": 0.5,
+        "ndcg": 0.6309297535714575,
+        "term_coverage": 1.0,
+        "latency": {
+          "mean_ms": 30.650600005174056,
+          "median_ms": 30.917700001737103,
+          "stdev_ms": 0.9942848562161128,
+          "p95_ms": 31.34650000720285,
+          "min_ms": 29.239299998153,
+          "max_ms": 31.683000008342788,
+          "samples_ms": [
+            30.917700001737103,
+            29.239299998153,
+            30.066500010434538,
+            31.34650000720285,
+            31.683000008342788
+          ],
+          "deterministic_across_reps": true
+        }
+      }
+    }
+  ]
+}
