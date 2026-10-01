@@ -53,6 +53,16 @@ from src.retrieval.faiss_index import FaissIndex, cross_process_index_lock
 from src.retrieval.hybrid_retriever import retrieve_for_question, retrieve_hybrid
 from src.retrieval.index_consistency import check_consistency, repair
 from src.retrieval.metadata_store import MetadataStore
+from src.ui.icons import (
+    ICON,
+    assistant_avatar_svg,
+    logo_svg,
+    material,
+    svg_data_uri,
+    user_avatar_svg,
+)
+
+AUTHOR = "Hatim Maula"
 
 TAGLINE = (
     "Ask questions about your healthcare PDFs. Answers are drawn only from the "
@@ -911,12 +921,40 @@ BASE_CSS = """
 h1 { font-size: 1.6rem !important; font-weight: 700 !important; letter-spacing: -0.01em; padding-bottom: 0.2rem !important; }
 .app-subtitle { color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5; margin: 0 0 1.2rem 0; max-width: 720px; }
 
+/* Icon glyphs in custom HTML: the same Material Symbols Rounded font
+   Streamlit uses for its own buttons and expanders (see src/ui/icons.py). */
+.ms {
+    font-family: "Material Symbols Rounded"; font-weight: normal; font-style: normal;
+    font-size: 1.15em; line-height: 1; letter-spacing: normal; text-transform: none;
+    display: inline-block; white-space: nowrap; direction: ltr; flex: none;
+    font-feature-settings: "liga"; -webkit-font-smoothing: antialiased;
+    font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+    user-select: none;
+}
+
+/* Title mark: the project logo before the page title. */
+h1::before {
+    content: ""; display: inline-block; flex: none;
+    width: 1.55em; height: 1.55em; margin-right: 0.55em; vertical-align: -0.38em;
+    background: var(--logo) center / contain no-repeat;
+}
+
 /* Sidebar sections: one small, quiet label style instead of large headings. */
 .section-label {
+    display: flex; align-items: center; gap: 0.4rem;
     font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--text-secondary) !important; margin: 0.2rem 0 0.4rem 0;
 }
-.section-label .count { font-weight: 600; margin-left: 0.25rem; }
+.section-label .ms { font-size: 1.05rem; }
+.section-label .count { font-weight: 600; }
+
+.brand-footer {
+    display: flex; align-items: center; gap: 0.55rem;
+    margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--border);
+}
+.brand-footer img { flex: none; border-radius: 5px; }
+.brand-footer-title { font-size: 0.78rem; font-weight: 600; }
+.brand-footer-author { font-size: 0.72rem; color: var(--text-secondary) !important; }
 .hint { color: var(--text-secondary) !important; font-size: 0.78rem; line-height: 1.45; margin-top: 0.3rem; }
 
 .doc-card {
@@ -930,10 +968,10 @@ h1 { font-size: 1.6rem !important; font-weight: 700 !important; letter-spacing: 
 .doc-card.in-scope { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 /* Long filenames truncate to one line with the full name on hover, so a
    30-character report name cannot push the sidebar controls out of shape. */
-.doc-name {
-    font-weight: 600; font-size: 0.92rem;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+.doc-name { display: flex; align-items: center; gap: 0.4rem; min-width: 0; font-weight: 600; font-size: 0.92rem; }
+.doc-name .doc-icon { color: var(--text-secondary) !important; font-size: 1.1rem; }
+.doc-card.in-scope .doc-icon { color: var(--accent-text) !important; }
+.doc-name-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .doc-meta {
     color: var(--text-secondary); font-size: 0.78rem; margin-top: 0.15rem;
     display: flex; align-items: center; gap: 0.4rem;
@@ -957,6 +995,7 @@ h1 { font-size: 1.6rem !important; font-weight: 700 !important; letter-spacing: 
     padding: 0.6rem 0.8rem; margin-bottom: 1rem;
 }
 .scope-headline {
+    display: flex; align-items: center; gap: 0.4rem;
     font-size: 0.78rem; font-weight: 600; letter-spacing: 0.03em;
     text-transform: uppercase; color: var(--text-secondary);
 }
@@ -1043,12 +1082,14 @@ h1 { font-size: 1.6rem !important; font-weight: 700 !important; letter-spacing: 
 
 /* Sources: one row per document with its pages. */
 .sources-label {
+    display: flex; align-items: center; gap: 0.4rem;
     font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--text-secondary) !important; margin: 0.2rem 0 0.35rem 0;
 }
+.sources-label .ms { font-size: 1.05rem; }
 .source-list { display: flex; flex-direction: column; gap: 0.3rem; }
 .source-row {
-    display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.5rem;
     border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary);
     padding: 0.3rem 0.6rem; font-size: 0.85rem;
 }
@@ -1089,7 +1130,13 @@ h1 { font-size: 1.6rem !important; font-weight: 700 !important; letter-spacing: 
 }
 .notice.error { border-color: var(--danger); border-left-color: var(--danger); background: var(--danger-soft); }
 .notice.warning { border-color: var(--warning); border-left-color: var(--warning); background: var(--warning-soft); }
-.notice-title { font-weight: 700; margin-bottom: 0.2rem; overflow-wrap: anywhere; }
+.notice-title { display: flex; align-items: flex-start; gap: 0.45rem; font-weight: 700; margin-bottom: 0.2rem; overflow-wrap: anywhere; }
+.notice-title .notice-icon { font-size: 1.15rem; margin-top: 0.05rem; }
+.stApp .notice .notice-icon { color: var(--text-secondary) !important; }
+.stApp .notice.error .notice-icon { color: var(--danger) !important; }
+.stApp .notice.warning .notice-icon { color: var(--warning) !important; }
+.stApp .source-row .source-icon { color: var(--text-secondary) !important; font-size: 1rem; }
+.stApp .scope-headline .ms { font-size: 1rem; }
 .notice p { margin: 0.15rem 0 0 0; color: var(--text) !important; }
 .notice code { font-size: 0.8rem; }
 
@@ -1109,6 +1156,7 @@ def inject_theme_css() -> None:
     theme = st.session_state.get("theme", "dark")
     palette = THEMES[theme]
     css_vars = "\n".join(f"--{key}: {value};" for key, value in palette.items())
+    css_vars += f'\n--logo: url("{svg_data_uri(logo_svg(64))}");'
     st.markdown(f"<style>:root {{{css_vars}}}\n{BASE_CSS}</style>", unsafe_allow_html=True)
 
 
@@ -1189,6 +1237,7 @@ def _render_upload_failures(current_keys: set) -> None:
         with cols[0]:
             st.button(
                 "Try again",
+                icon=ICON["retry"],
                 key=f"{_upload_widget_key(key)}_retry",
                 use_container_width=True,
                 disabled=key not in current_keys,
@@ -1199,6 +1248,7 @@ def _render_upload_failures(current_keys: set) -> None:
         with cols[1]:
             st.button(
                 "Dismiss",
+                icon=ICON["dismiss"],
                 key=f"{_upload_widget_key(key)}_dismiss",
                 use_container_width=True,
                 on_click=_dismiss_upload_failure,
@@ -1308,7 +1358,8 @@ def render_document_library(documents: list[dict], active_id: str | None, busy: 
 
         st.markdown(
             f'<div class="doc-card{" in-scope" if in_scope else ""}">'
-            f'<div class="doc-name" title="{escape(doc["source"])}">{escape(doc["source"])}</div>'
+            f'<div class="doc-name" title="{escape(doc["source"])}">{material("description", "doc-icon")}'
+            f'<span class="doc-name-text">{escape(doc["source"])}</span></div>'
             f'<div class="doc-meta">{escape(document_meta(doc))}{badge}</div>'
             f"</div>",
             unsafe_allow_html=True,
@@ -1323,6 +1374,7 @@ def render_document_library(documents: list[dict], active_id: str | None, busy: 
             if scope == "active":
                 st.button(
                     "In scope" if in_scope else "Use this document",
+                    icon=ICON["selected"] if in_scope else None,
                     key=f"select_{doc_id}",
                     use_container_width=True,
                     disabled=in_scope or busy,
@@ -1341,6 +1393,7 @@ def render_document_library(documents: list[dict], active_id: str | None, busy: 
         with col_remove:
             st.button(
                 "Remove",
+                icon=ICON["remove"],
                 key=f"remove_{doc_id}",
                 use_container_width=True,
                 disabled=busy,
@@ -1360,6 +1413,7 @@ def render_document_library(documents: list[dict], active_id: str | None, busy: 
             with c1:
                 st.button(
                     "Yes, remove",
+                    icon=ICON["remove_confirm"],
                     key=f"confirm_{doc_id}",
                     type="primary",
                     use_container_width=True,
@@ -1369,6 +1423,7 @@ def render_document_library(documents: list[dict], active_id: str | None, busy: 
             with c2:
                 st.button(
                     "Cancel",
+                    icon=ICON["cancel"],
                     key=f"cancel_{doc_id}",
                     use_container_width=True,
                     on_click=_cancel_delete,
@@ -1437,7 +1492,7 @@ def render_status() -> None:
     )
     if not ready:
         st.caption(hint)
-        st.button("Check again", key="recheck_ollama", on_click=_recheck_ollama)
+        st.button("Check again", icon=ICON["retry"], key="recheck_ollama", on_click=_recheck_ollama)
 
 
 @st.cache_data(ttl=15, show_spinner=False)
@@ -1475,9 +1530,23 @@ def render_analysis_scope(documents: list[dict], busy: bool = False) -> None:
     )
 
 
-def render_section_label(text: str, count: int | None = None) -> None:
+def render_section_label(text: str, icon: str, count: int | None = None) -> None:
     suffix = f'<span class="count">({count})</span>' if count else ""
-    st.markdown(f'<div class="section-label">{escape(text)}{suffix}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="section-label">{material(icon)}<span>{escape(text)}</span>{suffix}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_brand_footer() -> None:
+    """A quiet project/author mark at the foot of the sidebar - the product
+    title stays the header's job."""
+    st.markdown(
+        f'<div class="brand-footer"><img src="{svg_data_uri(logo_svg(20))}" width="20" height="20" alt="">'
+        f'<div><div class="brand-footer-title">RAG for Healthcare Documents</div>'
+        f'<div class="brand-footer-author">Research prototype · {escape(AUTHOR)}</div></div></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _clear_chat() -> None:
@@ -1496,7 +1565,7 @@ def render_sidebar(documents: list[dict], active_id: str | None) -> tuple[list[d
     render_status()
 
     st.divider()
-    render_section_label("Add documents")
+    render_section_label("Add documents", "upload_file")
     if render_upload_area(busy):
         documents = list_indexed_documents()
         active_id = resolve_active_document_id(documents, st.session_state.get("active_document_id"))
@@ -1507,18 +1576,19 @@ def render_sidebar(documents: list[dict], active_id: str | None) -> tuple[list[d
     # per-document control means (pick one, or tick several).
     render_analysis_scope(documents, busy)
 
-    render_section_label("Library", len(documents))
+    render_section_label("Library", "folder_open", len(documents))
     render_document_library(documents, active_id, busy)
 
     st.divider()
     st.button(
         "Clear conversation",
+        icon=ICON["clear"],
         use_container_width=True,
         disabled=busy or not st.session_state.get("chat_history"),
         on_click=_clear_chat,
     )
 
-    with st.expander("About this app"):
+    with st.expander("About this app", icon=ICON["about"]):
         st.markdown(f'<p class="safety-note">{escape(SAFETY_NOTICE)}</p>', unsafe_allow_html=True)
         st.caption(
             "Answers are generated locally by "
@@ -1526,6 +1596,8 @@ def render_sidebar(documents: list[dict], active_id: str | None) -> tuple[list[d
             "(FAISS vectors + SQLite FTS5 keywords, fused with reciprocal rank fusion). "
             "Documents, the index and the conversation stay on this machine."
         )
+        st.caption(f"Built by {AUTHOR}.")
+    render_brand_footer()
     return documents, active_id
 
 
@@ -1545,11 +1617,13 @@ def render_sources(sources: list[dict], current_names: set | None = None) -> Non
             else ""
         )
         rows.append(
-            f'<div class="source-row"><span class="source-name">{escape(group["source"])}</span>'
+            f'<div class="source-row">{material("description", "source-icon")}'
+            f'<span class="source-name">{escape(group["source"])}</span>'
             f'<span class="source-pages">{word} {", ".join(str(p) for p in pages)}</span>{removed}</div>'
         )
     st.markdown(
-        f'<div class="sources-label">Sources</div><div class="source-list">{"".join(rows)}</div>',
+        f'<div class="sources-label">{material("menu_book")}<span>Sources</span></div>'
+        f'<div class="source-list">{"".join(rows)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -1582,7 +1656,7 @@ def render_timing(timing: dict) -> None:
     rows = timing_rows(timing)
     if not rows:
         return
-    with st.expander("Timing"):
+    with st.expander("Timing", icon=ICON["timing"]):
         body = "".join(
             f'<tr class="{"total" if label == "Total" else ""}"><td>{escape(label)}</td><td>{escape(value)}</td></tr>'
             for label, value in rows
@@ -1613,7 +1687,7 @@ def render_evidence(chunks: list[dict]) -> None:
     prompt_builder.build_multi_document_context), so a citation in the
     answer always points at the same chunk here regardless of display order.
     """
-    with st.expander(f"Evidence · {pluralize(len(chunks), 'passage')} given to the model"):
+    with st.expander(f"Evidence · {pluralize(len(chunks), 'passage')} given to the model", icon=ICON["evidence"]):
         st.caption("The exact text retrieved from your documents. Numbers match the model's evidence labels.")
         distinct_sources = list(dict.fromkeys(c["source"] for c in chunks))
         if len(distinct_sources) <= 1:
@@ -1713,9 +1787,11 @@ def render_notice(title: str, lines: list[str], kind: str = "info") -> None:
     def fmt(text: str) -> str:
         return re.sub(r"`([^`]+)`", r"<code>\1</code>", escape(text))
 
+    glyph = {"info": "info", "warning": "warning", "error": "error"}.get(kind, "info")
     body = "".join(f"<p>{fmt(line)}</p>" for line in lines if line)
     st.markdown(
-        f'<div class="notice {kind}"><div class="notice-title">{fmt(title)}</div>{body}</div>',
+        f'<div class="notice {kind}"><div class="notice-title">{material(glyph, "notice-icon")}'
+        f"<span>{fmt(title)}</span></div>{body}</div>",
         unsafe_allow_html=True,
     )
 
@@ -1738,9 +1814,11 @@ def render_error_turn(turn: dict, retry_enabled: bool, key: str) -> None:
     err = turn["error"]
     render_notice(err["title"], [err["cause"], err["action"]], kind="error")
     if retry_enabled:
-        st.button("Retry", key=key, type="primary", on_click=retry_last_turn, args=(st.session_state,))
+        st.button(
+            "Retry", icon=ICON["retry"], key=key, type="primary", on_click=retry_last_turn, args=(st.session_state,)
+        )
     if err.get("detail"):
-        with st.expander("Technical details"):
+        with st.expander("Technical details", icon=ICON["details"]):
             st.code(err["detail"], language=None)
 
 
@@ -1750,7 +1828,7 @@ def render_scope_banner(headline: str, names: list[str]) -> None:
     about in a tool whose whole promise is document isolation."""
     chips = "".join(f'<span class="scope-chip">{escape(n)}</span>' for n in names)
     st.markdown(
-        f'<div class="scope-banner"><div class="scope-headline">{escape(headline)}</div>'
+        f'<div class="scope-banner"><div class="scope-headline">{material("visibility")}<span>{escape(headline)}</span></div>'
         f'<div class="scope-chips">{chips}</div></div>',
         unsafe_allow_html=True,
     )
@@ -1837,14 +1915,14 @@ def render_chat(
 def render_turn(turn: dict, current_names: set, retry_key: str, is_last: bool) -> None:
     """One committed turn, exactly as it looked when it finished."""
     if turn["role"] == "user":
-        with st.chat_message("user", avatar=":material/person:"):
+        with st.chat_message("user", avatar=user_avatar_svg()):
             st.markdown(
                 f'<div class="msg-head msg-user">You</div><div class="user-text">{escape(turn["content"])}</div>',
                 unsafe_allow_html=True,
             )
         return
 
-    with st.chat_message("assistant", avatar=":material/description:"):
+    with st.chat_message("assistant", avatar=assistant_avatar_svg()):
         st.markdown('<div class="msg-head msg-assistant">Answer</div>', unsafe_allow_html=True)
         status = turn.get("status", "ok")
         if status == "error":
@@ -1913,7 +1991,7 @@ def run_pending_turn(pending: dict, documents: list[dict]) -> None:
     prior_history = conversation_context(st.session_state["chat_history"][: pending["history_len"]])
     num_predict = resolve_num_predict(query, prior_history, scope["document_inventory"])
 
-    with st.chat_message("assistant", avatar=":material/description:"):
+    with st.chat_message("assistant", avatar=assistant_avatar_svg()):
         st.markdown('<div class="msg-head msg-assistant">Answer</div>', unsafe_allow_html=True)
         timing: dict = {}
         turn_start = time.perf_counter()
@@ -2026,7 +2104,7 @@ def ensure_index_consistency():
 
 
 def main() -> None:
-    st.set_page_config(page_title="RAG for Healthcare Documents", page_icon=":material/description:", layout="wide")
+    st.set_page_config(page_title="RAG for Healthcare Documents", page_icon=logo_svg(64), layout="wide")
 
     consistency_issue = ensure_index_consistency()
     if consistency_issue is not None:
@@ -2062,7 +2140,7 @@ def main() -> None:
     flash = st.session_state.pop("flash", None)
     if flash:
         kind, text = flash
-        st.toast(text, icon=":material/check_circle:" if kind == "success" else ":material/error:")
+        st.toast(text, icon=ICON["removed"] if kind == "success" else ICON["failed"])
 
     documents = list_indexed_documents()
     active_id = resolve_active_document_id(documents, st.session_state.get("active_document_id"))
