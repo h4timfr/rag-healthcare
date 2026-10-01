@@ -8,3 +8,12 @@ address = "localhost"
 serverAddress = "localhost"
 # No usage telemetry from a tool meant to run entirely locally.
 gatherUsageStats = false
+
+[client]
+# No "Deploy" button or developer menu in a local, single-user app.
+toolbarMode = "minimal"
+
+[theme]
+# Streamlit's own accent (focus rings, sliders, primary buttons) in the
+# app's blue instead of its default red; app.py's light/dark CSS sets the rest.
+primaryColor = "#2f81f7"

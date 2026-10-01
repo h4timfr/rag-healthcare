@@ -288,9 +288,11 @@ Known limitations, measured rather than assumed:
 - **Ordinal references follow library order.** "The second document" means
   the second in-scope document as listed in the library (upload order), not
   the order a previous answer happened to discuss them in.
-- **A second question sent while one is still generating replaces it.**
-  Streamlit cancels the running turn, so the first question is dropped
-  rather than queued.
+- **One question at a time.** While an answer is being written the input
+  and the library controls are disabled. A question is recorded the moment
+  it is sent; if answering it fails (for example, Ollama stops), the
+  conversation keeps the question and offers Retry. Refreshing the page
+  starts a new session and clears the conversation.
 - **Single-machine, single-user.** There is no authentication, no
   multi-user isolation, and no audit log. Do not expose it on a network you
   do not control.

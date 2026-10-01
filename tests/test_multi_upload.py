@@ -135,19 +135,27 @@ def test_resolve_active_document_id_returns_none_when_no_documents():
     assert app.resolve_active_document_id([], "anything") is None
 
 
-# --- friendly_error_message --------------------------------------------------
+# --- describe_error (user-facing chat errors) ---------------------------------
 
-def test_friendly_error_message_passes_through_rag_error_text():
-    assert app.friendly_error_message(app.EmptyQueryError("Query must not be empty")) == "Query must not be empty"
-
-
-def test_friendly_error_message_adds_hint_for_ollama_unavailable():
-    msg = app.friendly_error_message(app.OllamaUnavailableError("connection refused"))
-    assert "Ollama" in msg
-    assert "connection refused" in msg
+def _visible(err) -> str:
+    return " ".join((err.title, err.cause, err.action))
 
 
-def test_friendly_error_message_generic_fallback_for_unexpected_exception():
-    msg = app.friendly_error_message(RuntimeError("some internal bug"))
-    assert "some internal bug" not in msg  # never leak raw internals for unexpected errors
-    assert "unexpected" in msg.lower()
+def test_describe_error_passes_through_rag_error_text():
+    err = app.describe_error(app.EmptyQueryError("Query must not be empty"))
+    assert err.cause == "Query must not be empty"
+
+
+def test_describe_error_explains_ollama_unavailable_without_raw_detail():
+    """The raw connection error (urllib3 pool text, ports, WinError codes) was
+    shown in the chat; it now lives only in the collapsed technical details."""
+    err = app.describe_error(app.OllamaUnavailableError("connection refused"))
+    assert "Ollama" in err.title
+    assert "connection refused" not in _visible(err)
+    assert "Retry" in err.action
+
+
+def test_describe_error_generic_fallback_for_unexpected_exception():
+    err = app.describe_error(RuntimeError("some internal bug"))
+    assert "some internal bug" not in _visible(err)  # never leak raw internals for unexpected errors
+    assert "unexpected" in err.title.lower()

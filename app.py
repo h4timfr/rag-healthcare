@@ -11,6 +11,8 @@ import shutil
 import sys
 import tempfile
 import time
+from collections.abc import MutableMapping
+from dataclasses import asdict, dataclass
 from html import escape
 from pathlib import Path
 
@@ -24,6 +26,7 @@ from src.embedding.embedder import warm_up as warm_up_embedder
 from src.exceptions import (
     DatabaseNotFoundError,
     EmptyQueryError,
+    IndexNotFoundError,
     InsufficientRetrievalError,
     ModelUnavailableError,
     OllamaUnavailableError,
@@ -51,7 +54,11 @@ from src.retrieval.hybrid_retriever import retrieve_for_question, retrieve_hybri
 from src.retrieval.index_consistency import check_consistency, repair
 from src.retrieval.metadata_store import MetadataStore
 
-TAGLINE = "A retrieval-augmented question-answering prototype over healthcare PDFs"
+TAGLINE = (
+    "Ask questions about your healthcare PDFs. Answers are drawn only from the "
+    "documents in scope, with every source passage shown - and everything runs "
+    "on this machine."
+)
 SAFETY_NOTICE = (
     "This tool provides information grounded in uploaded documents and is not "
     "a substitute for professional medical advice."
@@ -132,6 +139,7 @@ def ingest_uploaded_pdfs(files: list[tuple[str, bytes]]) -> list[dict]:
                     "image_only_pages": [],
                     "page_count": None,
                     "error": str(e),
+                    "error_type": type(e).__name__,
                 }
             )
         else:
@@ -146,6 +154,7 @@ def ingest_uploaded_pdfs(files: list[tuple[str, bytes]]) -> list[dict]:
                     "image_only_pages": result.get("image_only_pages", []),
                     "page_count": result.get("page_count"),
                     "error": None,
+                    "error_type": None,
                 }
             )
     return results
@@ -218,9 +227,17 @@ def completion_status(total_ms: float, truncated: bool) -> tuple[str, str]:
     return "caption", f"Complete · {seconds}"
 
 
-def render_completion_status(total_ms: float, truncated: bool) -> None:
-    kind, text = completion_status(total_ms, truncated)
-    (st.warning if kind == "warning" else st.caption)(text)
+def pluralize(count: int, singular: str, plural: str | None = None) -> str:
+    """'1 chunk', '2 chunks', '0 chunks' - the count is always included."""
+    return f"{count} {singular if count == 1 else (plural or singular + 's')}"
+
+
+def document_meta(doc: dict) -> str:
+    """'12 chunks · 4 pages' for a library card; pages omitted when unknown."""
+    bits = [pluralize(doc.get("chunk_count") or 0, "chunk")]
+    if doc.get("page_count"):
+        bits.append(pluralize(doc["page_count"], "page"))
+    return " · ".join(bits)
 
 
 def group_sources(sources: list[dict]) -> list[dict]:
@@ -585,19 +602,165 @@ def answer_question(query: str, top_k: int = config.TOP_K, document_id: str | No
     return {"answer": answer, "sources": sources, "chunks": chunks}
 
 
-def friendly_error_message(exc: Exception) -> str:
-    """A short, non-technical message for the chat UI. RagError subclasses
-    already carry human-readable text; this adds actionable hints for the
-    most common operational failures and a safe fallback for anything else
-    (so an unexpected bug shows a plain message instead of a raw traceback).
-    """
-    if isinstance(exc, OllamaUnavailableError):
-        return f"Could not reach Ollama - is it running locally? ({exc})"
+@dataclass(frozen=True)
+class UserFacingError:
+    """What happened, why it might have happened, and what to do about it.
+    `detail` is the raw exception text, shown only inside a collapsed
+    "Technical details" panel, never in the message itself."""
+
+    title: str
+    cause: str
+    action: str
+    detail: str = ""
+
+
+def describe_error(exc: Exception) -> UserFacingError:
+    """Map an answer-path failure to a message a user can act on."""
+    detail = f"{type(exc).__name__}: {exc}"
     if isinstance(exc, ModelUnavailableError):
-        return f"The configured model isn't available in Ollama yet. ({exc})"
+        return UserFacingError(
+            "The language model isn't installed",
+            f"Ollama is running, but the configured model ({config.OLLAMA_MODEL}) hasn't been downloaded.",
+            f"Run `ollama pull {config.OLLAMA_MODEL}` in a terminal, then select Retry.",
+            detail,
+        )
+    if isinstance(exc, OllamaUnavailableError):
+        text = str(exc).lower()
+        if "interrupted" in text or "unparseable" in text:
+            return UserFacingError(
+                "The answer was interrupted",
+                "The connection to Ollama dropped while the answer was being written, "
+                "so the partial answer was discarded rather than shown as if it were complete.",
+                "Select Retry. If it happens again, check that Ollama is still running.",
+                detail,
+            )
+        if "empty response" in text:
+            return UserFacingError(
+                "The model returned an empty answer",
+                "Ollama responded, but produced no text for this question.",
+                "Select Retry, or rephrase the question.",
+                detail,
+            )
+        return UserFacingError(
+            "Ollama isn't available",
+            "The local Ollama service didn't respond, so no answer could be generated.",
+            "Start Ollama (open the Ollama app or run `ollama serve`) and make sure the "
+            "configured model is installed, then select Retry.",
+            detail,
+        )
+    if isinstance(exc, EmptyQueryError):
+        return UserFacingError("The question is empty", str(exc), "Type a question and send it again.", detail)
+    if isinstance(exc, (DatabaseNotFoundError, IndexNotFoundError)):
+        return UserFacingError(
+            "The document index isn't available",
+            "The search index for your library could not be found on disk.",
+            "Upload the document again to rebuild its index.",
+            detail,
+        )
     if isinstance(exc, RagError):
-        return str(exc)
-    return "Something unexpected went wrong answering that question. Please try again."
+        return UserFacingError(
+            "Couldn't answer that question", str(exc), "Select Retry, or rephrase the question.", detail
+        )
+    return UserFacingError(
+        "Something unexpected went wrong",
+        "An internal error stopped this answer before it finished.",
+        "Select Retry. If it keeps happening, the terminal running the app has the details.",
+        detail,
+    )
+
+
+def describe_upload_failure(filename: str, error_type: str | None, message: str) -> UserFacingError:
+    """Map an ingestion failure (see ingest_uploaded_pdfs) to plain language."""
+    text = (message or "").lower()
+    if error_type == "InvalidPDFError" and "encrypted" in text:
+        return UserFacingError(
+            f"{filename} is password-protected",
+            "Encrypted PDFs can't be read.",
+            "Save an unprotected copy and upload that instead.",
+            message,
+        )
+    if error_type == "InvalidPDFError":
+        return UserFacingError(
+            f"{filename} couldn't be opened as a PDF",
+            "The file may be damaged, incomplete, or not actually a PDF.",
+            "Check that it opens in a PDF viewer, then upload it again.",
+            message,
+        )
+    if error_type == "EmptyDocumentError" and "damaged or truncated" in text:
+        return UserFacingError(
+            f"{filename} appears to be damaged",
+            "No text could be recovered from it - it may have been cut off while downloading.",
+            "Download or export it again, then upload the new copy.",
+            message,
+        )
+    if error_type == "EmptyDocumentError":
+        return UserFacingError(
+            f"{filename} has no readable text",
+            "It looks like a scanned or image-only PDF, and this app doesn't run OCR.",
+            "Use a text-based PDF, such as one exported from a word processor.",
+            message,
+        )
+    return UserFacingError(
+        f"{filename} couldn't be added",
+        "An unexpected error occurred while it was being indexed. Nothing was added to the library.",
+        "Select Try again. If it keeps failing, the terminal running the app has the details.",
+        message,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chat turn state. A question is recorded in the history the moment it is
+# submitted and the answer is produced on the following run, so the input can
+# be shown disabled while it is generated, and a run that is interrupted
+# (e.g. by another widget) resumes the same question instead of losing it.
+# ---------------------------------------------------------------------------
+
+MAX_QUERY_CHARS = 2000
+MAX_GENERATION_ATTEMPTS = 3
+
+
+def queue_question(state: MutableMapping, query: str, scope: dict) -> None:
+    """Record the user's question and mark it as awaiting an answer."""
+    history = state.setdefault("chat_history", [])
+    history.append({"role": "user", "content": query})
+    state["pending_turn"] = {"query": query, "scope": scope, "history_len": len(history) - 1, "attempts": 0}
+
+
+def finish_pending_turn(state: MutableMapping, assistant_turn: dict) -> None:
+    state.setdefault("chat_history", []).append(assistant_turn)
+    state.pop("pending_turn", None)
+
+
+def error_turn(err: UserFacingError, pending: dict) -> dict:
+    """An assistant turn recording a failure. Kept out of the generation
+    context (see conversation_context) - an error is not part of the
+    conversation the model should continue."""
+    return {
+        "role": "assistant",
+        "status": "error",
+        "content": err.title,
+        "error": asdict(err),
+        "retry": {k: pending[k] for k in ("query", "scope", "history_len")},
+    }
+
+
+def can_retry(state: MutableMapping) -> bool:
+    history = state.get("chat_history") or []
+    return bool(history) and history[-1].get("status") == "error" and "pending_turn" not in state
+
+
+def retry_last_turn(state: MutableMapping) -> None:
+    """Drop the trailing error turn and queue its question again, against
+    the same scope it was originally asked in."""
+    if not can_retry(state):
+        return
+    failed = state["chat_history"].pop()
+    state["pending_turn"] = {**failed["retry"], "attempts": 0}
+
+
+def conversation_context(history: list[dict]) -> list[dict]:
+    """Prior turns that are part of the conversation (errors excluded)."""
+    return [t for t in history if t.get("status") != "error"]
 
 
 # ---------------------------------------------------------------------------
@@ -614,9 +777,16 @@ THEMES = {
         "text-secondary": "#9198a1",
         "accent": "#4f8cff",
         "accent-soft": "rgba(79, 140, 255, 0.15)",
+        "accent-text": "#8fb8ff",
+        "on-accent": "#ffffff",
         "user-bg": "#1f2937",
         "assistant-bg": "#161b22",
         "danger": "#f85149",
+        "danger-soft": "rgba(248, 81, 73, 0.12)",
+        "warning": "#d29922",
+        "warning-soft": "rgba(210, 153, 34, 0.12)",
+        "success": "#3fb950",
+        "passage-bg": "#0d1117",
     },
     "light": {
         "bg": "#ffffff",
@@ -627,9 +797,16 @@ THEMES = {
         "text-secondary": "#59636e",
         "accent": "#0969da",
         "accent-soft": "rgba(9, 105, 218, 0.10)",
+        "accent-text": "#0550ae",
+        "on-accent": "#ffffff",
         "user-bg": "#f0f4f9",
-        "assistant-bg": "#f6f8fa",
+        "assistant-bg": "#ffffff",
         "danger": "#cf222e",
+        "danger-soft": "rgba(207, 34, 46, 0.08)",
+        "warning": "#9a6700",
+        "warning-soft": "rgba(154, 103, 0, 0.08)",
+        "success": "#1a7f37",
+        "passage-bg": "#f6f8fa",
     },
 }
 
@@ -667,6 +844,52 @@ BASE_CSS = """
     background: var(--card-bg) !important;
     border-color: var(--border) !important;
 }
+[data-testid="stExpander"] summary:hover { background: var(--accent-soft) !important; }
+
+/* Radio, checkbox and toggle take their colors from Streamlit's base theme,
+   which follows the OS, not this app's theme switch - an unselected radio
+   rendered as a solid dark disc in light mode. Structure (Streamlit 1.6x):
+   label > span > input, then the drawn control. */
+[data-testid="stRadioOption"] > div > div > div:first-child {
+    background: transparent !important;
+    box-shadow: inset 0 0 0 2px var(--text-secondary) !important;
+}
+[data-testid="stRadioOption"] > div > div > div:first-child > div { background: transparent !important; }
+[data-testid="stRadioOption"]:has(input:checked) > div > div > div:first-child {
+    box-shadow: inset 0 0 0 2px var(--accent) !important;
+}
+[data-testid="stRadioOption"]:has(input:checked) > div > div > div:first-child > div {
+    background: var(--accent) !important;
+}
+[data-testid="stCheckbox"] label:has(input:not([role="switch"])) > span + div {
+    background: var(--card-bg) !important;
+    border: 1.5px solid var(--text-secondary) !important;
+}
+[data-testid="stCheckbox"] label:has(input:not([role="switch"]):checked) > span + div {
+    background-color: var(--accent) !important;
+    border-color: var(--accent) !important;
+}
+[data-testid="stCheckbox"] label:has(input[role="switch"]) > span + div { background: var(--border) !important; }
+[data-testid="stCheckbox"] label:has(input[role="switch"]:checked) > span + div { background: var(--accent) !important; }
+[data-testid="stCheckbox"] label:has(input[role="switch"]) > span + div > div { background: #ffffff !important; }
+[data-testid="stCheckbox"] label:has(input:focus-visible) > span + div,
+[data-testid="stRadioOption"]:has(input:focus-visible) > div > div > div:first-child {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
+/* Buttons: secondary (above) for everyday actions, primary in the accent
+   color, and the one destructive confirmation in the danger color. */
+[data-testid^="stBaseButton-primary"] {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: var(--on-accent) !important;
+}
+[class*="st-key-confirm_"] [data-testid^="stBaseButton-primary"] {
+    background: var(--danger) !important;
+    border-color: var(--danger) !important;
+}
+[data-testid^="stBaseButton"]:disabled { opacity: 0.55; cursor: not-allowed; }
+[data-testid^="stBaseButton"] p { font-weight: 500; }
 [data-testid="stChatInput"],
 [data-testid="stChatInput"] > div:first-child {
     background: var(--card-bg) !important;
@@ -681,17 +904,30 @@ BASE_CSS = """
 [data-testid="stChatInputTextArea"] { color: var(--text) !important; background: transparent !important; }
 [data-testid="stChatInputTextArea"]::placeholder { color: var(--text-secondary) !important; opacity: 1 !important; }
 
-.app-subtitle { color: var(--text-secondary); font-size: 0.95rem; margin-top: -0.6rem; }
+/* Page header and readable main column. */
+[data-testid="stMainBlockContainer"],
+[data-testid="stBottomBlockContainer"] { max-width: 960px; }
+[data-testid="stMainBlockContainer"] { padding-top: 2.4rem; }
+h1 { font-size: 1.6rem !important; font-weight: 700 !important; letter-spacing: -0.01em; padding-bottom: 0.2rem !important; }
+.app-subtitle { color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5; margin: 0 0 1.2rem 0; max-width: 720px; }
+
+/* Sidebar sections: one small, quiet label style instead of large headings. */
+.section-label {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-secondary) !important; margin: 0.2rem 0 0.4rem 0;
+}
+.section-label .count { font-weight: 600; margin-left: 0.25rem; }
+.hint { color: var(--text-secondary) !important; font-size: 0.78rem; line-height: 1.45; margin-top: 0.3rem; }
 
 .doc-card {
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 0.5rem 0.7rem;
+    padding: 0.55rem 0.75rem;
     margin-top: 0.6rem;
     margin-bottom: 0.3rem;
     background: var(--card-bg);
 }
-.doc-card.in-scope { border-color: var(--accent); background: var(--accent-soft); }
+.doc-card.in-scope { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 /* Long filenames truncate to one line with the full name on hover, so a
    30-character report name cannot push the sidebar controls out of shape. */
 .doc-name {
@@ -703,10 +939,16 @@ BASE_CSS = """
     display: flex; align-items: center; gap: 0.4rem;
 }
 .doc-badge {
-    color: var(--accent); border: 1px solid var(--accent);
-    border-radius: 999px; padding: 0 0.4rem;
-    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em;
+    color: var(--accent-text) !important; border: 1px solid var(--accent);
+    border-radius: 999px; padding: 0 0.45rem;
+    font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
 }
+.delete-confirm {
+    border: 1px solid var(--danger); background: var(--danger-soft);
+    border-radius: 8px; padding: 0.55rem 0.7rem; margin: 0.2rem 0 0.4rem 0;
+    font-size: 0.85rem; line-height: 1.45;
+}
+.delete-confirm strong { overflow-wrap: anywhere; }
 
 /* Scope banner - what this turn can actually see. */
 .scope-banner {
@@ -728,35 +970,44 @@ BASE_CSS = """
 
 .empty-state {
     border: 1px dashed var(--border); border-radius: 12px;
-    padding: 1.6rem 1.8rem; background: var(--bg-secondary);
-    max-width: 640px;
+    padding: 1.4rem 1.6rem; background: var(--bg-secondary);
+    max-width: 680px;
 }
-.empty-state h3 { margin: 0 0 0.6rem 0; font-size: 1.05rem; color: var(--text); }
-.empty-state p {
-    margin: 0 0 0.6rem 0; color: var(--text-secondary);
+.empty-state h3 { margin: 0 0 0.5rem 0; font-size: 1.02rem; color: var(--text); }
+.empty-state p, .empty-state li {
+    margin: 0 0 0.5rem 0; color: var(--text-secondary);
     font-size: 0.9rem; line-height: 1.55;
 }
-.empty-state p:last-child { margin-bottom: 0; }
+.empty-state ul { margin: 0.2rem 0 0 1.1rem; padding: 0; }
+.empty-state p:last-child, .empty-state li:last-child { margin-bottom: 0; }
 
 /* Keep the sidebar narrow enough to leave the chat usable on a laptop. */
 [data-testid="stSidebar"] { min-width: 300px; max-width: 340px; }
 
-.status-badge { font-size: 0.8rem; padding: 0.15rem 0; }
-.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.4rem; }
-.status-ok { background: #3fb950; }
+.status-row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; padding: 0.1rem 0; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.status-ok { background: var(--success); }
 .status-bad { background: var(--danger); }
 
-.safety-note { color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4; }
+.safety-note { color: var(--text-secondary); font-size: 0.85rem; line-height: 1.45; }
 
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+/* Chat. Each message starts with a small role label whose class also marks
+   the message for styling - independent of which avatar is shown. */
+[data-testid="stChatMessage"] { padding: 0.9rem 1rem; margin-bottom: 0.5rem; gap: 0.75rem; }
+[data-testid="stChatMessage"]:has(.msg-user) {
     background: var(--user-bg);
     border-radius: 12px;
 }
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) {
+[data-testid="stChatMessage"]:has(.msg-assistant) {
     background: var(--assistant-bg);
     border-radius: 12px;
     border: 1px solid var(--border);
 }
+.msg-head {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-secondary) !important; margin-bottom: 0.15rem;
+}
+.user-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
 [data-testid="stChatMessage"] p,
 [data-testid="stChatMessage"] span,
 [data-testid="stChatMessage"] li,
@@ -764,8 +1015,92 @@ BASE_CSS = """
 [data-testid="stChatMessage"] [data-testid="stCaptionContainer"] {
     color: var(--text) !important;
 }
-[data-testid="stChatMessage"] [data-testid="stCaptionContainer"] {
+[data-testid="stChatMessage"] [data-testid="stCaptionContainer"],
+[data-testid="stChatMessage"] [data-testid="stCaptionContainer"] p {
     color: var(--text-secondary) !important;
+}
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p { line-height: 1.6; }
+/* Secondary text inside messages: these must out-rank the chat's own
+   "[data-testid=stChatMessage] span/p { color: text }" rule above. */
+[data-testid="stChatMessage"] .source-pages,
+[data-testid="stChatMessage"] .passage-page,
+[data-testid="stChatMessage"] .sources-label,
+[data-testid="stChatMessage"] .stage,
+[data-testid="stChatMessage"] .msg-head,
+[data-testid="stChatMessage"] .timing-table td:last-child { color: var(--text-secondary) !important; }
+[data-testid="stChatMessage"] .passage-num { color: var(--accent-text) !important; }
+[data-testid="stChatMessage"] .source-removed { color: var(--warning) !important; }
+
+/* Live progress line while a turn is being answered. */
+.stage { display: flex; align-items: center; gap: 0.55rem; color: var(--text-secondary) !important; font-size: 0.9rem; }
+.stage-spinner {
+    width: 14px; height: 14px; flex: none; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: stage-spin 0.9s linear infinite;
+}
+@keyframes stage-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .stage-spinner { animation: none; } }
+
+/* Sources: one row per document with its pages. */
+.sources-label {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-secondary) !important; margin: 0.2rem 0 0.35rem 0;
+}
+.source-list { display: flex; flex-direction: column; gap: 0.3rem; }
+.source-row {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary);
+    padding: 0.3rem 0.6rem; font-size: 0.85rem;
+}
+.source-name { font-weight: 600; overflow-wrap: anywhere; }
+.source-pages { color: var(--text-secondary) !important; }
+.source-removed { color: var(--warning) !important; font-size: 0.75rem; font-weight: 600; }
+
+/* Evidence passages: metadata header, then the verbatim retrieved text. */
+.passage { border: 1px solid var(--border); border-radius: 8px; margin: 0 0 0.6rem 0; overflow: hidden; }
+.passage-head {
+    display: flex; flex-wrap: wrap; gap: 0.15rem 0.5rem; align-items: baseline;
+    background: var(--bg-secondary); border-bottom: 1px solid var(--border);
+    padding: 0.35rem 0.65rem; font-size: 0.8rem;
+}
+.passage-num {
+    font-weight: 700; color: var(--accent-text) !important;
+    font-variant-numeric: tabular-nums;
+}
+.passage-source { font-weight: 600; overflow-wrap: anywhere; }
+.passage-page { color: var(--text-secondary) !important; }
+.passage-text {
+    background: var(--passage-bg); padding: 0.6rem 0.75rem;
+    font-size: 0.86rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.evidence-group { font-size: 0.85rem; font-weight: 700; margin: 0.4rem 0 0.5rem 0; overflow-wrap: anywhere; }
+
+/* Timing details: a small, quiet table. */
+.timing-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.timing-table td { padding: 0.25rem 0.2rem; border-bottom: 1px solid var(--border); }
+.timing-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary) !important; }
+.timing-table tr.total td { font-weight: 700; border-bottom: none; color: var(--text) !important; }
+
+/* Notices: no evidence (informational) and errors. */
+.notice {
+    border: 1px solid var(--border); border-left: 3px solid var(--text-secondary);
+    border-radius: 8px; padding: 0.7rem 0.9rem; background: var(--bg-secondary);
+    font-size: 0.88rem; line-height: 1.55;
+}
+.notice.error { border-color: var(--danger); border-left-color: var(--danger); background: var(--danger-soft); }
+.notice.warning { border-color: var(--warning); border-left-color: var(--warning); background: var(--warning-soft); }
+.notice-title { font-weight: 700; margin-bottom: 0.2rem; overflow-wrap: anywhere; }
+.notice p { margin: 0.15rem 0 0 0; color: var(--text) !important; }
+.notice code { font-size: 0.8rem; }
+
+.upload-result { font-size: 0.84rem; line-height: 1.45; margin: 0.15rem 0; overflow-wrap: anywhere; }
+.upload-result .ok { color: var(--success) !important; font-weight: 700; }
+.upload-result .skip { color: var(--text-secondary) !important; font-weight: 700; }
+
+@media (max-width: 640px) {
+    [data-testid="stMainBlockContainer"] { padding-left: 0.9rem; padding-right: 0.9rem; padding-top: 1.6rem; }
+    h1 { font-size: 1.35rem !important; }
+    [data-testid="stChatMessage"] { padding: 0.7rem 0.75rem; }
 }
 """
 
@@ -789,77 +1124,144 @@ def _upload_key(uploaded_file) -> tuple:
     return (uploaded_file.name, uploaded_file.size)
 
 
-def render_upload_area() -> bool:
+def summarize_upload_batch(results: list[dict]) -> str:
+    """'2 added · 1 already in your library · 1 failed' (zero counts omitted)."""
+    added = sum(r["status"] == "indexed" for r in results)
+    skipped = sum(r["status"] == "skipped" for r in results)
+    failed = sum(r["status"] == "failed" for r in results)
+    parts = []
+    if added:
+        parts.append(f"{pluralize(added, 'document')} added")
+    if skipped:
+        parts.append(f"{skipped} already in your library")
+    if failed:
+        parts.append(f"{failed} couldn't be added")
+    return " · ".join(parts) or "Nothing to add"
+
+
+def _upload_widget_key(key: tuple) -> str:
+    return "upload_" + re.sub(r"[^A-Za-z0-9]+", "_", f"{key[0]}_{key[1]}")
+
+
+def _retry_upload(key: tuple) -> None:
+    st.session_state.setdefault("processed_upload_keys", set()).discard(key)
+    st.session_state.setdefault("upload_failures", {}).pop(key, None)
+
+
+def _dismiss_upload_failure(key: tuple) -> None:
+    st.session_state.setdefault("upload_failures", {}).pop(key, None)
+
+
+def _render_upload_result(result: dict) -> None:
+    name = escape(result["filename"])
+    if result["status"] == "indexed":
+        pages = f" from {pluralize(result['page_count'], 'page')}" if result.get("page_count") else ""
+        st.markdown(
+            f'<div class="upload-result"><span class="ok">✓</span> <strong>{name}</strong> added - '
+            f"{pluralize(result['chunk_count'], 'chunk')}{pages}</div>",
+            unsafe_allow_html=True,
+        )
+        if result.get("image_only_pages"):
+            pages_list = ", ".join(str(p) for p in result["image_only_pages"])
+            st.warning(
+                f"Page(s) {pages_list} of **{result['filename']}** contain only images, so their "
+                "text can't be read and they won't appear in answers. This app doesn't run OCR."
+            )
+        if result.get("degraded_pages"):
+            pages_list = ", ".join(str(p) for p in result["degraded_pages"])
+            st.warning(
+                f"Page(s) {pages_list} of **{result['filename']}** have a damaged text layer that "
+                "couldn't be repaired, so answers about those pages may be unreliable."
+            )
+    elif result["status"] == "skipped":
+        st.markdown(
+            f'<div class="upload-result"><span class="skip">•</span> <strong>{name}</strong> is '
+            "already in your library (identical file), so it wasn't added again.</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def _render_upload_failures(current_keys: set) -> None:
+    for key, failure in list(st.session_state.get("upload_failures", {}).items()):
+        err = UserFacingError(**failure)
+        render_notice(err.title, [err.cause, err.action], kind="error")
+        cols = st.columns(2)
+        with cols[0]:
+            st.button(
+                "Try again",
+                key=f"{_upload_widget_key(key)}_retry",
+                use_container_width=True,
+                disabled=key not in current_keys,
+                help=None if key in current_keys else "Select the file again to retry it.",
+                on_click=_retry_upload,
+                args=(key,),
+            )
+        with cols[1]:
+            st.button(
+                "Dismiss",
+                key=f"{_upload_widget_key(key)}_dismiss",
+                use_container_width=True,
+                on_click=_dismiss_upload_failure,
+                args=(key,),
+            )
+
+
+def render_upload_area(busy: bool = False) -> bool:
     """Returns whether any file was processed this run, so the caller knows
-    the document list it read earlier is stale."""
+    the document list it read earlier is stale. `busy` (an answer is being
+    generated) disables the uploader so a new upload can't interrupt it."""
     uploaded_files = st.file_uploader(
         "Upload PDFs",
         type=["pdf"],
         accept_multiple_files=True,
         label_visibility="collapsed",
         help="Add one or more healthcare PDFs to the searchable library.",
+        disabled=busy,
     )
-    if not uploaded_files:
-        return False
+    st.markdown(
+        '<div class="hint">PDF only. Text-based PDFs work best - scanned pages can\'t be read. '
+        "Files are processed on this machine.</div>",
+        unsafe_allow_html=True,
+    )
+    uploaded_files = uploaded_files or []
+    current_keys = {_upload_key(f) for f in uploaded_files}
 
     processed_keys = st.session_state.setdefault("processed_upload_keys", set())
+    failures = st.session_state.setdefault("upload_failures", {})
     new_files = [f for f in uploaded_files if _upload_key(f) not in processed_keys]
     if not new_files:
+        _render_upload_failures(current_keys)
         return False
 
-    with st.status(f"Indexing {len(new_files)} document(s)...", expanded=True) as status:
+    with st.status(f"Adding {pluralize(len(new_files), 'document')}…", expanded=True) as status:
         batch_results = []
         for uploaded_file in new_files:
-            st.write(f"**{uploaded_file.name}**")
             progress = st.empty()
-            progress.caption("uploading -> extracting -> chunking -> embedding -> indexing...")
-
+            progress.markdown(
+                f'<div class="upload-result"><strong>{escape(uploaded_file.name)}</strong> - '
+                "reading, splitting and indexing the text…</div>",
+                unsafe_allow_html=True,
+            )
             result = ingest_uploaded_pdfs([(uploaded_file.name, uploaded_file.getvalue())])[0]
             batch_results.append(result)
-            processed_keys.add(_upload_key(uploaded_file))
-
-            if result["status"] == "indexed":
-                pages = result.get("page_count")
-                detail = f"Indexed - {result['chunk_count']} chunks"
-                if pages:
-                    detail += f" from {pages} pages"
-                progress.caption(detail)
-                if result.get("repaired_pages"):
-                    st.caption(
-                        f"Page(s) {result['repaired_pages']} had malformed word "
-                        "boundaries and were re-extracted from glyph geometry."
-                    )
-                if result.get("image_only_pages"):
-                    st.warning(
-                        f"Page(s) {result['image_only_pages']} of **{uploaded_file.name}** "
-                        "contain only images, so their text could not be read and they "
-                        "are not searchable. This app does not run OCR; a text-based PDF "
-                        "will give much better answers."
-                    )
-                if result.get("degraded_pages"):
-                    st.warning(
-                        f"Page(s) {result['degraded_pages']} of **{uploaded_file.name}** "
-                        "extracted without usable word boundaries and could not be "
-                        "repaired, so keyword search and answer quality will be poor for "
-                        "this document. This is a property of the PDF's text layer, not "
-                        "of your question."
-                    )
-            elif result["status"] == "skipped":
-                progress.caption(
-                    f"Already in your library - {result['chunk_count']} chunks (not re-indexed)."
+            key = _upload_key(uploaded_file)
+            processed_keys.add(key)
+            progress.empty()
+            if result["status"] == "failed":
+                failures[key] = asdict(
+                    describe_upload_failure(uploaded_file.name, result.get("error_type"), result["error"] or "")
                 )
             else:
-                progress.caption("Could not be indexed.")
-                st.error(f"**{uploaded_file.name}** - {result['error']}")
+                failures.pop(key, None)
+                _render_upload_result(result)
 
-        indexed = sum(1 for r in batch_results if r["status"] == "indexed")
-        skipped = sum(1 for r in batch_results if r["status"] == "skipped")
-        failed = sum(1 for r in batch_results if r["status"] == "failed")
+        has_warnings = any(r.get("image_only_pages") or r.get("degraded_pages") for r in batch_results)
         status.update(
-            label=f"Done: {indexed} indexed, {skipped} skipped, {failed} failed",
-            state="error" if failed else "complete",
-            expanded=failed > 0,
+            label=summarize_upload_batch(batch_results),
+            state="error" if all(r["status"] == "failed" for r in batch_results) else "complete",
+            expanded=has_warnings,
         )
+    _render_upload_failures(current_keys)
 
     # The most recently successfully-processed document (indexed or already
     # present) becomes active, unless the user already had a still-valid
@@ -876,7 +1278,7 @@ def render_upload_area() -> bool:
     return True
 
 
-def render_document_library(documents: list[dict], active_id: str | None) -> None:
+def render_document_library(documents: list[dict], active_id: str | None, busy: bool = False) -> None:
     """One document list, showing each document's state for the CURRENT
     analysis scope.
 
@@ -889,7 +1291,10 @@ def render_document_library(documents: list[dict], active_id: str | None) -> Non
     a radio in Active mode, checkboxes in Selected mode.
     """
     if not documents:
-        st.caption("No documents yet - upload a PDF above to begin.")
+        st.markdown(
+            '<div class="hint">No documents yet. Add a PDF above and it will appear here.</div>',
+            unsafe_allow_html=True,
+        )
         return
 
     scope = st.session_state.get("analysis_scope", "active")
@@ -899,16 +1304,12 @@ def render_document_library(documents: list[dict], active_id: str | None) -> Non
     for doc in documents:
         doc_id = doc["document_id"]
         in_scope = doc_id == active_id if scope == "active" else doc_id in selected
-
-        meta_bits = [f"{doc['chunk_count']} chunks"]
-        if doc.get("page_count"):
-            meta_bits.append(f"{doc['page_count']} pages")
+        badge = "<span class='doc-badge'>in scope</span>" if in_scope else ""
 
         st.markdown(
             f'<div class="doc-card{" in-scope" if in_scope else ""}">'
             f'<div class="doc-name" title="{escape(doc["source"])}">{escape(doc["source"])}</div>'
-            f'<div class="doc-meta">{" · ".join(meta_bits)}'
-            f'{"<span class=\'doc-badge\'>in scope</span>" if in_scope else ""}</div>'
+            f'<div class="doc-meta">{escape(document_meta(doc))}{badge}</div>'
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -924,7 +1325,7 @@ def render_document_library(documents: list[dict], active_id: str | None) -> Non
                     "In scope" if in_scope else "Use this document",
                     key=f"select_{doc_id}",
                     use_container_width=True,
-                    disabled=in_scope,
+                    disabled=in_scope or busy,
                     on_click=_set_active_document,
                     args=(doc_id,),
                 )
@@ -933,6 +1334,7 @@ def render_document_library(documents: list[dict], active_id: str | None) -> Non
                     "Include in analysis",
                     value=in_scope,
                     key=f"scope_select_{doc_id}",
+                    disabled=busy,
                     on_change=_toggle_selected_document,
                     args=(doc_id,),
                 )
@@ -941,17 +1343,23 @@ def render_document_library(documents: list[dict], active_id: str | None) -> Non
                 "Remove",
                 key=f"remove_{doc_id}",
                 use_container_width=True,
-                help=f"Delete {doc['source']} from the library",
+                disabled=busy,
+                help=f"Remove {doc['source']} from the library",
                 on_click=_request_delete,
                 args=(doc_id,),
             )
 
-        if pending_delete == doc_id:
-            st.warning(f"Delete **{doc['source']}** permanently? This cannot be undone.")
+        if pending_delete == doc_id and not busy:
+            st.markdown(
+                f'<div class="delete-confirm">Remove <strong>{escape(doc["source"])}</strong> from the '
+                "library? Its text and search index are deleted from this machine. Earlier answers "
+                "stay in the conversation. This can't be undone.</div>",
+                unsafe_allow_html=True,
+            )
             c1, c2 = st.columns(2)
             with c1:
                 st.button(
-                    "Confirm delete",
+                    "Yes, remove",
                     key=f"confirm_{doc_id}",
                     type="primary",
                     use_container_width=True,
@@ -990,21 +1398,46 @@ def _cancel_delete() -> None:
 
 
 def _confirm_delete(doc_id: str, active_id: str | None) -> None:
-    delete_document(doc_id)
+    name = next((d["source"] for d in list_indexed_documents() if d["document_id"] == doc_id), "The document")
     st.session_state.pop("pending_delete_id", None)
+    try:
+        delete_document(doc_id)
+    except Exception as exc:  # noqa: BLE001 - reported to the user; the store is left as it was
+        st.session_state["flash"] = (
+            "error",
+            f"{name} couldn't be removed ({type(exc).__name__}). Nothing was changed - try again.",
+        )
+        return
     st.session_state.setdefault("selected_document_ids", set()).discard(doc_id)
     remaining = list_indexed_documents()
     fallback_request = active_id if active_id != doc_id else None
     st.session_state["active_document_id"] = resolve_active_document_id(remaining, fallback_request)
+    st.session_state["flash"] = ("success", f"Removed {name} from the library.")
+
+
+def ollama_status_view(status: dict) -> tuple[bool, str, str]:
+    """(ready, label, hint) for the sidebar status row, from get_status()."""
+    if status.get("ready"):
+        return True, f"Ready · {config.OLLAMA_MODEL}", ""
+    if "reachable" in status.get("detail", ""):
+        return False, "Ollama isn't running", "Start Ollama, then select Check again."
+    return False, "Model not installed", f"Run `ollama pull {config.OLLAMA_MODEL}`, then select Check again."
+
+
+def _recheck_ollama() -> None:
+    _cached_ollama_status.clear()
 
 
 def render_status() -> None:
-    status = _cached_ollama_status()
-    dot_class = "status-ok" if status["ready"] else "status-bad"
+    ready, label, hint = ollama_status_view(_cached_ollama_status())
+    dot_class = "status-ok" if ready else "status-bad"
     st.markdown(
-        f'<div class="status-badge"><span class="status-dot {dot_class}"></span>{escape(status["detail"])}</div>',
+        f'<div class="status-row"><span class="status-dot {dot_class}"></span>{escape(label)}</div>',
         unsafe_allow_html=True,
     )
+    if not ready:
+        st.caption(hint)
+        st.button("Check again", key="recheck_ollama", on_click=_recheck_ollama)
 
 
 @st.cache_data(ttl=15, show_spinner=False)
@@ -1012,13 +1445,13 @@ def _cached_ollama_status() -> dict:
     return get_ollama_status()
 
 
-def render_theme_toggle() -> None:
+def render_theme_toggle(busy: bool = False) -> None:
     theme = st.session_state.get("theme", "dark")
-    is_dark = st.toggle("Dark mode", value=(theme == "dark"), key="theme_toggle")
+    is_dark = st.toggle("Dark mode", value=(theme == "dark"), key="theme_toggle", disabled=busy)
     st.session_state["theme"] = "dark" if is_dark else "light"
 
 
-def render_analysis_scope(documents: list[dict]) -> None:
+def render_analysis_scope(documents: list[dict], busy: bool = False) -> None:
     """"Analysis scope" selector: Active document (default, single-document
     isolation, unchanged) or Selected documents (an explicit, opt-in subset
     the user checks off - never "everything" implicitly).
@@ -1033,6 +1466,7 @@ def render_analysis_scope(documents: list[dict]) -> None:
             "One document at a time" if v == "active" else "Several documents together"
         ),
         key="analysis_scope",
+        disabled=busy,
         help=(
             "One document: questions are answered from a single document, fully "
             "isolated from the rest of the library. Several documents: compare "
@@ -1041,15 +1475,29 @@ def render_analysis_scope(documents: list[dict]) -> None:
     )
 
 
+def render_section_label(text: str, count: int | None = None) -> None:
+    suffix = f'<span class="count">({count})</span>' if count else ""
+    st.markdown(f'<div class="section-label">{escape(text)}{suffix}</div>', unsafe_allow_html=True)
+
+
+def _clear_chat() -> None:
+    st.session_state["chat_history"] = []
+
+
 def render_sidebar(documents: list[dict], active_id: str | None) -> tuple[list[dict], str | None]:
     """Returns the document list and active document as they stand after
-    any upload this run, for the chat area rendered after the sidebar."""
-    render_theme_toggle()
+    any upload this run, for the chat area rendered after the sidebar.
+
+    While an answer is being generated every control that could change what
+    it is about (upload, scope, library, clear) is disabled, so it can't be
+    interrupted or have its documents removed underneath it."""
+    busy = "pending_turn" in st.session_state
+    render_theme_toggle(busy)
     render_status()
 
     st.divider()
-    st.subheader("Add documents")
-    if render_upload_area():
+    render_section_label("Add documents")
+    if render_upload_area(busy):
         documents = list_indexed_documents()
         active_id = resolve_active_document_id(documents, st.session_state.get("active_document_id"))
         st.session_state["active_document_id"] = active_id
@@ -1057,76 +1505,101 @@ def render_sidebar(documents: list[dict], active_id: str | None) -> tuple[list[d
     st.divider()
     # Scope comes before the library because it decides what the library's
     # per-document control means (pick one, or tick several).
-    render_analysis_scope(documents)
+    render_analysis_scope(documents, busy)
 
-    header = "Library" if not documents else f"Library ({len(documents)})"
-    st.subheader(header)
-    render_document_library(documents, active_id)
+    render_section_label("Library", len(documents))
+    render_document_library(documents, active_id, busy)
 
     st.divider()
-    if st.button("Clear chat", use_container_width=True):
-        st.session_state["chat_history"] = []
+    st.button(
+        "Clear conversation",
+        use_container_width=True,
+        disabled=busy or not st.session_state.get("chat_history"),
+        on_click=_clear_chat,
+    )
 
-    with st.expander("About / System information"):
+    with st.expander("About this app"):
         st.markdown(f'<p class="safety-note">{escape(SAFETY_NOTICE)}</p>', unsafe_allow_html=True)
         st.caption(
-            "Hybrid FAISS (dense) + SQLite FTS5 (keyword) retrieval, fused with "
-            "reciprocal rank fusion. Answers are generated locally by "
-            f"{config.OLLAMA_MODEL} via Ollama - no data leaves this machine."
+            "Answers are generated locally by "
+            f"{config.OLLAMA_MODEL} via Ollama from passages found with hybrid search "
+            "(FAISS vectors + SQLite FTS5 keywords, fused with reciprocal rank fusion). "
+            "Documents, the index and the conversation stay on this machine."
         )
     return documents, active_id
 
 
-def render_sources(sources: list[dict]) -> None:
+def render_sources(sources: list[dict], current_names: set | None = None) -> None:
+    """One row per document with the pages the answer drew on. A document
+    removed from the library since is marked, so an old answer's sources
+    stay truthful about what can still be opened."""
     if not sources:
         return
-    st.markdown("**Sources**")
+    rows = []
     for group in group_sources(sources):
         pages = group["pages"]
-        word = "page" if len(pages) == 1 else "pages"
-        st.caption(f"• {group['source']} — {word} {', '.join(str(p) for p in pages)}")
+        word = "Page" if len(pages) == 1 else "Pages"
+        removed = (
+            '<span class="source-removed">removed from library</span>'
+            if current_names is not None and group["source"] not in current_names
+            else ""
+        )
+        rows.append(
+            f'<div class="source-row"><span class="source-name">{escape(group["source"])}</span>'
+            f'<span class="source-pages">{word} {", ".join(str(p) for p in pages)}</span>{removed}</div>'
+        )
+    st.markdown(
+        f'<div class="sources-label">Sources</div><div class="source-list">{"".join(rows)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def timing_rows(timing: dict) -> list[tuple[str, str]]:
+    """Readable (label, value) rows for the timing panel; stages that
+    weren't measured are left out rather than shown as 0 ms."""
+    rows = []
+    retrieval_keys = ("embedding_ms", "dense_ms", "keyword_ms", "fusion_ms")
+    if any(k in timing for k in retrieval_keys):
+        retrieval_ms = sum(timing.get(k, 0.0) for k in retrieval_keys)
+        rows.append(("Finding relevant passages", f"{retrieval_ms:.0f} ms"))
+    if "prompt_build_ms" in timing:
+        rows.append(("Preparing the question for the model", f"{timing['prompt_build_ms']:.1f} ms"))
+    if timing.get("time_to_first_token_ms") is not None:
+        rows.append(("Until the answer started", f"{timing['time_to_first_token_ms']:.0f} ms"))
+    gen = timing.get("generation") or {}
+    if gen.get("load_ms", 0) >= 50:
+        rows.append(("Loading the model", f"{gen['load_ms']:.0f} ms"))
+    if gen.get("eval_ms"):
+        tokens = f" ({gen['completion_tokens']} tokens)" if gen.get("completion_tokens") else ""
+        rows.append((f"Writing the answer{tokens}", f"{gen['eval_ms']:.0f} ms"))
+    if timing.get("total_ms") is not None:
+        rows.append(("Total", f"{timing['total_ms'] / 1000:.1f} s"))
+    return rows
 
 
 def render_timing(timing: dict) -> None:
-    """Per-turn, collapsed-by-default performance breakdown - opt-in detail,
-    not a persistent log: nothing here renders unless the user expands it.
-    """
-    with st.expander("⏱️ Performance"):
-        retrieval_ms = sum(
-            timing.get(k, 0.0)
-            for k in ("embedding_ms", "dense_ms", "keyword_ms", "fusion_ms")
+    """Collapsed by default - secondary to the answer."""
+    rows = timing_rows(timing)
+    if not rows:
+        return
+    with st.expander("Timing"):
+        body = "".join(
+            f'<tr class="{"total" if label == "Total" else ""}"><td>{escape(label)}</td><td>{escape(value)}</td></tr>'
+            for label, value in rows
         )
-        st.caption(f"Retrieval: {retrieval_ms:.0f} ms total")
-        st.caption(
-            f"  • query embedding: {timing.get('embedding_ms', 0.0):.1f} ms  ·  "
-            f"dense (FAISS): {timing.get('dense_ms', 0.0):.1f} ms  ·  "
-            f"keyword (FTS5): {timing.get('keyword_ms', 0.0):.1f} ms  ·  "
-            f"fusion: {timing.get('fusion_ms', 0.0):.1f} ms"
-        )
-        st.caption(f"Prompt construction: {timing.get('prompt_build_ms', 0.0):.1f} ms")
-
-        gen = timing.get("generation", {})
-        if gen:
-            st.caption(
-                f"Ollama - model load: {gen.get('load_ms', 0.0):.0f} ms  ·  "
-                f"prompt eval: {gen.get('prompt_eval_ms', 0.0):.0f} ms  ·  "
-                f"generation: {gen.get('eval_ms', 0.0):.0f} ms"
-            )
-            if gen.get("completion_tokens"):
-                st.caption(f"  ({gen['completion_tokens']} tokens generated)")
-
-        if timing.get("time_to_first_token_ms") is not None:
-            st.caption(f"Time to first token: {timing['time_to_first_token_ms']:.0f} ms")
-
-        st.caption(f"**Total end-to-end: {timing.get('total_ms', 0.0):.0f} ms**")
+        st.markdown(f'<table class="timing-table">{body}</table>', unsafe_allow_html=True)
 
 
 def _render_evidence_chunks(chunks: list[dict]) -> None:
-    for i, chunk in enumerate(chunks, start=1):
-        st.markdown(f"**[{chunk['rank']}] {chunk['source']} - page {chunk['page']}**")
-        st.text(chunk["text"])
-        if i < len(chunks):
-            st.divider()
+    for chunk in chunks:
+        st.markdown(
+            '<div class="passage"><div class="passage-head">'
+            f'<span class="passage-num">[{chunk["rank"]}]</span>'
+            f'<span class="passage-source">{escape(chunk["source"])}</span>'
+            f'<span class="passage-page">Page {chunk["page"]}</span></div>'
+            f'<div class="passage-text">{escape(chunk["text"])}</div></div>',
+            unsafe_allow_html=True,
+        )
 
 
 def render_evidence(chunks: list[dict]) -> None:
@@ -1140,16 +1613,15 @@ def render_evidence(chunks: list[dict]) -> None:
     prompt_builder.build_multi_document_context), so a citation in the
     answer always points at the same chunk here regardless of display order.
     """
-    with st.expander(f"Retrieved evidence ({len(chunks)} chunks)"):
+    with st.expander(f"Evidence · {pluralize(len(chunks), 'passage')} given to the model"):
+        st.caption("The exact text retrieved from your documents. Numbers match the model's evidence labels.")
         distinct_sources = list(dict.fromkeys(c["source"] for c in chunks))
         if len(distinct_sources) <= 1:
             _render_evidence_chunks(chunks)
             return
 
-        for i, source in enumerate(distinct_sources):
-            if i > 0:
-                st.divider()
-            st.markdown(f"**{source}**")
+        for source in distinct_sources:
+            st.markdown(f'<div class="evidence-group">{escape(source)}</div>', unsafe_allow_html=True)
             _render_evidence_chunks([c for c in chunks if c["source"] == source])
 
 
@@ -1189,10 +1661,10 @@ def render_empty_state(has_documents: bool) -> None:
             '<div class="empty-state">'
             "<h3>Start by adding a document</h3>"
             "<p>Upload a healthcare PDF using <strong>Add documents</strong> in the "
-            "sidebar. It is parsed, chunked and indexed locally on this machine - "
+            "sidebar. It is parsed, split into passages and indexed on this machine - "
             "nothing is uploaded anywhere.</p>"
-            "<p>Once it is indexed you can ask questions about it, and every answer "
-            "will cite the pages it came from.</p>"
+            "<p>Once it is indexed you can ask questions about it. Each answer lists "
+            "the pages it drew on and shows the exact passages it was given.</p>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -1210,16 +1682,66 @@ def render_empty_state(has_documents: bool) -> None:
     )
 
 
+def shorten(text: str, limit: int = 48) -> str:
+    """Middle-truncate a long filename for single-line UI text, keeping the
+    end (often a version or date) visible: 'Discharge summary wi…FINAL.pdf'."""
+    if len(text) <= limit:
+        return text
+    head = limit * 2 // 3
+    return f"{text[:head].rstrip()}…{text[-(limit - head - 1):].lstrip()}"
+
+
+def render_conversation_start() -> None:
+    """Scope is ready but nothing has been asked yet. The scope banner above
+    already names the documents in full, so the heading doesn't repeat them."""
+    st.markdown(
+        '<div class="empty-state">'
+        "<h3>Ask your first question</h3>"
+        "<ul>"
+        "<li>Answers are written only from passages found in the documents in scope.</li>"
+        "<li>Under each answer you can see which pages it used and read the exact passages.</li>"
+        "<li>Specific questions work best - a name, a value, a date, a section.</li>"
+        "</ul>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_notice(title: str, lines: list[str], kind: str = "info") -> None:
+    """A calm bordered notice; `kind` is 'info', 'warning' or 'error'. Text
+    is escaped except `backticks`, which become inline code."""
+    def fmt(text: str) -> str:
+        return re.sub(r"`([^`]+)`", r"<code>\1</code>", escape(text))
+
+    body = "".join(f"<p>{fmt(line)}</p>" for line in lines if line)
+    st.markdown(
+        f'<div class="notice {kind}"><div class="notice-title">{fmt(title)}</div>{body}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_no_evidence(scope_label: str) -> None:
     """Shown when retrieval finds nothing. Deliberately not an error: the
     system has no evidence either way, which is not the same as the fact
     being false, and saying so is the honest thing for a clinical tool."""
-    st.warning(
-        f"**No relevant evidence found in {scope_label}.**\n\n"
-        "This does not mean the answer is no - only that nothing in the "
-        "documents currently in scope matched the question. Try rephrasing it, "
-        "or widen the scope in the sidebar."
+    render_notice(
+        f"No matching passages in {scope_label}",
+        [
+            "This doesn't mean the answer is no - only that nothing in the documents "
+            "in scope matched the question.",
+            "Try rephrasing it with words the document is likely to use, or widen the scope in the sidebar.",
+        ],
     )
+
+
+def render_error_turn(turn: dict, retry_enabled: bool, key: str) -> None:
+    err = turn["error"]
+    render_notice(err["title"], [err["cause"], err["action"]], kind="error")
+    if retry_enabled:
+        st.button("Retry", key=key, type="primary", on_click=retry_last_turn, args=(st.session_state,))
+    if err.get("detail"):
+        with st.expander("Technical details"):
+            st.code(err["detail"], language=None)
 
 
 def render_scope_banner(headline: str, names: list[str]) -> None:
@@ -1262,144 +1784,203 @@ def render_chat(
             noun = "document" if len(names) == 1 else "documents"
             render_scope_banner(f"Analysing {len(names)} {noun}", names)
         placeholder = (
-            f"Ask about {names[0]}..."
+            f"Ask about {shorten(names[0])}…"
             if len(names) == 1
-            else f"Ask about these {len(names)} documents..."
-        ) if scope_ready else "Tick at least one document in the sidebar..."
+            else f"Ask about these {len(names)} documents…"
+        ) if scope_ready else "Tick at least one document in the sidebar…"
     else:
         scope_ready = scope_document_id is not None
         active_doc = next((d for d in documents if d["document_id"] == scope_document_id), None)
         scope_label = active_doc["source"] if active_doc else "the selected document"
         if scope_ready and active_doc:
             render_scope_banner("Analysing one document", [active_doc["source"]])
-        placeholder = (
-            f"Ask about {active_doc['source']}..." if active_doc else "Ask a question..."
-        )
+        placeholder = f"Ask about {shorten(active_doc['source'])}…" if active_doc else "Ask a question…"
 
-    for turn in st.session_state["chat_history"]:
-        with st.chat_message(turn["role"]):
-            st.write(turn["content"])
-            turn_timing = turn.get("timing") or {}
-            if turn["role"] == "assistant" and turn_timing.get("total_ms") is not None:
-                # Mirrors the live status shown right after this turn finished
-                # generating, so it stays visible after a later turn causes a
-                # rerun - not just for the instant it first appeared.
-                render_completion_status(turn_timing["total_ms"], turn.get("truncated", False))
-            if turn["role"] == "assistant" and turn.get("sources"):
-                render_sources(turn["sources"])
-            if turn["role"] == "assistant" and turn.get("chunks"):
-                render_evidence(turn["chunks"])
-            if turn["role"] == "assistant" and turn_timing:
-                render_timing(turn_timing)
+    history = st.session_state["chat_history"]
+    pending = st.session_state.get("pending_turn")
+    current_names = {d["source"] for d in documents}
+    for i, turn in enumerate(history):
+        render_turn(turn, current_names, retry_key=f"retry_{i}", is_last=i == len(history) - 1)
+
+    if pending is not None:
+        st.chat_input("Writing an answer…", key="chat_input", disabled=True)
+        run_pending_turn(pending, documents)
+        # Re-render from the committed history, which also re-enables the input.
+        st.rerun()
+        return
 
     if not scope_ready:
         render_empty_state(has_documents=bool(documents))
         return
 
-    query = st.chat_input(placeholder)
-    if not query:
+    if not history:
+        render_conversation_start()
+
+    query = st.chat_input(placeholder, key="chat_input", max_chars=MAX_QUERY_CHARS)
+    if not query or not query.strip():
         return
 
-    # Snapshot prior turns for generation context BEFORE appending this new
-    # user turn - history is for display and (below) generation context
-    # only; retrieve_and_build_prompt() below is only ever given the clean
-    # `query` string, never this history, so retrieval matching is never
-    # blurred by earlier conversation.
-    prior_history = list(st.session_state["chat_history"])
+    queue_question(
+        st.session_state,
+        query.strip(),
+        {
+            "analysis_scope": analysis_scope,
+            "document_id": scope_document_id,
+            "document_inventory": document_inventory,
+            "top_k": resolve_retrieval_top_k(analysis_scope, selected_document_ids),
+            "scope_label": scope_label,
+        },
+    )
+    st.rerun()
 
-    st.session_state["chat_history"].append({"role": "user", "content": query})
-    with st.chat_message("user"):
-        st.write(query)
 
-    top_k = resolve_retrieval_top_k(analysis_scope, selected_document_ids)
-    num_predict = resolve_num_predict(query, prior_history, document_inventory)
+def render_turn(turn: dict, current_names: set, retry_key: str, is_last: bool) -> None:
+    """One committed turn, exactly as it looked when it finished."""
+    if turn["role"] == "user":
+        with st.chat_message("user", avatar=":material/person:"):
+            st.markdown(
+                f'<div class="msg-head msg-user">You</div><div class="user-text">{escape(turn["content"])}</div>',
+                unsafe_allow_html=True,
+            )
+        return
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=":material/description:"):
+        st.markdown('<div class="msg-head msg-assistant">Answer</div>', unsafe_allow_html=True)
+        status = turn.get("status", "ok")
+        if status == "error":
+            render_error_turn(turn, retry_enabled=is_last and can_retry(st.session_state), key=retry_key)
+            return
+        if status == "no_evidence":
+            render_no_evidence(turn.get("scope_label", "the documents in scope"))
+            return
+        st.markdown(turn["content"])
+        turn_timing = turn.get("timing") or {}
+        if turn_timing.get("total_ms") is not None:
+            render_completion_status(turn_timing["total_ms"], turn.get("truncated", False), turn.get("chunks") or [])
+        render_sources(turn.get("sources") or [], current_names)
+        if turn.get("chunks"):
+            render_evidence(turn["chunks"])
+        if turn_timing:
+            render_timing(turn_timing)
+
+
+def render_completion_status(total_ms: float, truncated: bool, chunks: list[dict] | None = None) -> None:
+    kind, text = completion_status(total_ms, truncated)
+    if kind == "warning":
+        render_notice("This answer may be incomplete", [text], kind="warning")
+        return
+    if chunks:
+        n_docs = len({c["source"] for c in chunks})
+        text += f" · based on {pluralize(len(chunks), 'passage')} from {pluralize(n_docs, 'document')}"
+    st.caption(text)
+
+
+def _stage(placeholder, text: str) -> None:
+    placeholder.markdown(
+        f'<div class="stage"><span class="stage-spinner"></span>{escape(text)}</div>', unsafe_allow_html=True
+    )
+
+
+def run_pending_turn(pending: dict, documents: list[dict]) -> None:
+    """Answer the queued question, streaming it into an assistant message,
+    then commit exactly one turn - the answer, a no-evidence notice, or an
+    error the user can retry. A partially streamed answer that then fails
+    is discarded rather than kept as if it were complete."""
+    pending["attempts"] = pending.get("attempts", 0) + 1
+    scope = pending["scope"]
+    query = pending["query"]
+
+    if pending["attempts"] > MAX_GENERATION_ATTEMPTS:
+        err = UserFacingError(
+            "The answer was interrupted",
+            "Generating this answer was interrupted several times before it could finish.",
+            "Select Retry and avoid using the sidebar until the answer has finished.",
+        )
+        finish_pending_turn(st.session_state, error_turn(err, pending))
+        return
+
+    scope_ids = scope["document_id"] if isinstance(scope["document_id"], list) else [scope["document_id"]]
+    indexed_ids = {d["document_id"] for d in documents}
+    if any(doc_id not in indexed_ids for doc_id in scope_ids):
+        err = UserFacingError(
+            "A document in scope is no longer in the library",
+            "It was removed before this answer could be generated.",
+            "Choose a document in the sidebar and ask the question again.",
+        )
+        finish_pending_turn(st.session_state, error_turn(err, pending))
+        return
+
+    prior_history = conversation_context(st.session_state["chat_history"][: pending["history_len"]])
+    num_predict = resolve_num_predict(query, prior_history, scope["document_inventory"])
+
+    with st.chat_message("assistant", avatar=":material/description:"):
+        st.markdown('<div class="msg-head msg-assistant">Answer</div>', unsafe_allow_html=True)
         timing: dict = {}
         turn_start = time.perf_counter()
 
-        # A single status line, truthful about which stage is actually
-        # running. Retrieval (FAISS + FTS5) is ~40-50ms - the real wait on
-        # this hardware is Ollama generation, which used to run silently
-        # under a spinner still reading "Searching your documents...". The
-        # message is updated in place, then cleared the instant the first
-        # real token streams in (see on_first_token below), so nothing
-        # lingers above the answer once there is something to look at.
+        # Truthful about which stage is running: retrieval takes tens of
+        # milliseconds, the real wait is generation. Cleared the instant the
+        # first token arrives (on_first_token below).
         stage = st.empty()
-        stage.markdown("🔎 *Retrieving relevant evidence...*")
+        _stage(stage, "Searching the documents in scope…")
         try:
             chunks, prompt = retrieve_and_build_prompt(
                 query,
-                top_k=top_k,
-                document_id=scope_document_id,
+                top_k=scope["top_k"],
+                document_id=scope["document_id"],
                 timing=timing,
-                document_inventory=document_inventory,
+                document_inventory=scope["document_inventory"],
                 history=prior_history,
             )
         except InsufficientRetrievalError:
-            # Not an error state: nothing matched, which is a real and
-            # honest answer for a clinical tool, not a failure.
+            # Not an error: nothing matched, which is an honest answer.
             stage.empty()
-            render_no_evidence(scope_label)
-            st.session_state["chat_history"].append(
+            finish_pending_turn(
+                st.session_state,
                 {
                     "role": "assistant",
-                    "content": f"No relevant evidence was found in {scope_label} for that question.",
-                }
+                    "status": "no_evidence",
+                    "scope_label": scope["scope_label"],
+                    "content": f"No relevant evidence was found in {scope['scope_label']} for that question.",
+                },
             )
             return
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - every failure becomes a retryable error turn
             stage.empty()
-            message = friendly_error_message(e)
-            st.error(message)
-            st.session_state["chat_history"].append(
-                {"role": "assistant", "content": f"Error: {message}"}
-            )
+            finish_pending_turn(st.session_state, error_turn(describe_error(e), pending))
             return
 
-        stage.markdown("🧠 *Generating answer...*")
-
+        _stage(stage, f"Writing the answer from {pluralize(len(chunks), 'passage')}…")
         gen_result: dict = {}
         try:
-            answer = st.write_stream(
+            st.write_stream(
                 _stream_with_ttft(
                     prompt, gen_result, timing, num_predict=num_predict, on_first_token=stage.empty
                 )
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             stage.empty()
-            message = friendly_error_message(e)
-            st.error(message)
-            st.session_state["chat_history"].append(
-                {"role": "assistant", "content": f"Error: {message}"}
-            )
+            # A generation attempt is first-hand evidence of Ollama's state;
+            # don't let the sidebar keep showing a cached status that disagrees.
+            _cached_ollama_status.clear()
+            finish_pending_turn(st.session_state, error_turn(describe_error(e), pending))
             return
 
-        # Prefer the out-param's stripped text (matches generate()'s
-        # normalization exactly); st.write_stream's return value is an
-        # equivalent fallback if generation completed but somehow didn't
-        # populate the out-param.
-        answer = gen_result.get("answer", answer)
-        truncated = gen_result.get("truncated", False)
+        _cached_ollama_status.clear()
         timing["generation"] = gen_result.get("timing", {})
         timing["total_ms"] = (time.perf_counter() - turn_start) * 1000
 
-        render_completion_status(timing["total_ms"], truncated)
-
-        sources = [{"source": c["source"], "page": c["page"], "score": c["score"]} for c in chunks]
-        render_sources(sources)
-        render_evidence(chunks)
-        render_timing(timing)
-
-    st.session_state["chat_history"].append(
+    finish_pending_turn(
+        st.session_state,
         {
             "role": "assistant",
-            "content": answer,
-            "sources": sources,
+            "status": "ok",
+            "content": gen_result.get("answer", ""),
+            "sources": [{"source": c["source"], "page": c["page"], "score": c["score"]} for c in chunks],
             "chunks": chunks,
             "timing": timing,
-            "truncated": truncated,
-        }
+            "truncated": gen_result.get("truncated", False),
+        },
     )
 
 
@@ -1445,7 +2026,7 @@ def ensure_index_consistency():
 
 
 def main() -> None:
-    st.set_page_config(page_title="RAG for Healthcare Documents", page_icon="🩺", layout="wide")
+    st.set_page_config(page_title="RAG for Healthcare Documents", page_icon=":material/description:", layout="wide")
 
     consistency_issue = ensure_index_consistency()
     if consistency_issue is not None:
@@ -1475,8 +2056,13 @@ def main() -> None:
 
     inject_theme_css()
 
-    st.title("🩺 RAG for Healthcare Documents")
+    st.title("RAG for Healthcare Documents")
     st.markdown(f'<p class="app-subtitle">{escape(TAGLINE)}</p>', unsafe_allow_html=True)
+
+    flash = st.session_state.pop("flash", None)
+    if flash:
+        kind, text = flash
+        st.toast(text, icon=":material/check_circle:" if kind == "success" else ":material/error:")
 
     documents = list_indexed_documents()
     active_id = resolve_active_document_id(documents, st.session_state.get("active_document_id"))
