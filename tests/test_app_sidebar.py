@@ -173,3 +173,33 @@ def test_in_scope_document_is_marked_on_its_card(three_documents):
     body = _markdown(at)
     assert "in-scope" in body
     assert "in scope" in body  # the badge text
+
+
+class _FakeUpload:
+    def __init__(self, name, data):
+        self.name, self._data, self.size = name, data, len(data)
+
+    def getvalue(self):
+        return self._data
+
+
+def test_an_upload_appears_in_the_library_and_chat_in_the_same_run(tmp_path, monkeypatch):
+    """The page read the document list before the sidebar ran the upload,
+    so a freshly indexed document was missing from the library and the chat
+    still said "Start by adding a document" until the user's next click."""
+    import streamlit
+
+    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "metadata.db"))
+    monkeypatch.setattr(config, "FAISS_INDEX_PATH", str(tmp_path / "faiss.index"))
+    monkeypatch.setattr(ingest_script, "embed_texts", _fake_embed_texts)
+    pdf = tmp_path / "Fresh Upload.pdf"
+    _make_pdf(pdf, "A freshly uploaded discharge summary.")
+    monkeypatch.setattr(streamlit, "file_uploader", lambda *a, **k: [_FakeUpload(pdf.name, pdf.read_bytes())])
+
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=30)
+
+    body = _markdown(at)
+    assert body.count('class="doc-card') == 1
+    assert "Fresh Upload.pdf" in body
+    assert "Start by adding a document" not in body

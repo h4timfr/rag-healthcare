@@ -659,6 +659,10 @@ BASE_CSS = """
     border-color: var(--border) !important;
 }
 [data-testid="stFileUploaderDropzone"] * { color: var(--text) !important; }
+[data-testid="stFileChip"] {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border) !important;
+}
 [data-testid="stExpander"] {
     background: var(--card-bg) !important;
     border-color: var(--border) !important;
@@ -667,6 +671,12 @@ BASE_CSS = """
 [data-testid="stChatInput"] > div:first-child {
     background: var(--card-bg) !important;
     border-color: var(--border) !important;
+}
+/* The override above also replaced Streamlit's focus highlight, leaving the
+   main input with no visible keyboard focus. */
+[data-testid="stChatInput"]:focus-within > div:first-child {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 1px var(--accent) !important;
 }
 [data-testid="stChatInputTextArea"] { color: var(--text) !important; background: transparent !important; }
 [data-testid="stChatInputTextArea"]::placeholder { color: var(--text-secondary) !important; opacity: 1 !important; }
@@ -779,7 +789,9 @@ def _upload_key(uploaded_file) -> tuple:
     return (uploaded_file.name, uploaded_file.size)
 
 
-def render_upload_area() -> None:
+def render_upload_area() -> bool:
+    """Returns whether any file was processed this run, so the caller knows
+    the document list it read earlier is stale."""
     uploaded_files = st.file_uploader(
         "Upload PDFs",
         type=["pdf"],
@@ -788,12 +800,12 @@ def render_upload_area() -> None:
         help="Add one or more healthcare PDFs to the searchable library.",
     )
     if not uploaded_files:
-        return
+        return False
 
     processed_keys = st.session_state.setdefault("processed_upload_keys", set())
     new_files = [f for f in uploaded_files if _upload_key(f) not in processed_keys]
     if not new_files:
-        return
+        return False
 
     with st.status(f"Indexing {len(new_files)} document(s)...", expanded=True) as status:
         batch_results = []
@@ -861,6 +873,7 @@ def render_upload_area() -> None:
             if result["document_id"] is not None:
                 st.session_state["active_document_id"] = result["document_id"]
                 break
+    return True
 
 
 def render_document_library(documents: list[dict], active_id: str | None) -> None:
@@ -1028,13 +1041,18 @@ def render_analysis_scope(documents: list[dict]) -> None:
     )
 
 
-def render_sidebar(documents: list[dict], active_id: str | None) -> None:
+def render_sidebar(documents: list[dict], active_id: str | None) -> tuple[list[dict], str | None]:
+    """Returns the document list and active document as they stand after
+    any upload this run, for the chat area rendered after the sidebar."""
     render_theme_toggle()
     render_status()
 
     st.divider()
     st.subheader("Add documents")
-    render_upload_area()
+    if render_upload_area():
+        documents = list_indexed_documents()
+        active_id = resolve_active_document_id(documents, st.session_state.get("active_document_id"))
+        st.session_state["active_document_id"] = active_id
 
     st.divider()
     # Scope comes before the library because it decides what the library's
@@ -1056,6 +1074,7 @@ def render_sidebar(documents: list[dict], active_id: str | None) -> None:
             "reciprocal rank fusion. Answers are generated locally by "
             f"{config.OLLAMA_MODEL} via Ollama - no data leaves this machine."
         )
+    return documents, active_id
 
 
 def render_sources(sources: list[dict]) -> None:
@@ -1476,7 +1495,7 @@ def main() -> None:
         st.session_state["model_warmed"] = True
 
     with st.sidebar:
-        render_sidebar(documents, active_id)
+        documents, active_id = render_sidebar(documents, active_id)
 
     render_chat(
         documents,

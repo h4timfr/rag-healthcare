@@ -14,6 +14,12 @@ data/raw_pdfs/*
 !data/raw_pdfs/.gitkeep
 data/*.db
 data/*.index
+# Cross-process writer lock beside each index, and the temp file an
+# interrupted atomic save can leave behind (see src/retrieval/faiss_index.py).
+data/*.index.lock
+data/*.index.tmp-*
+data/research_corpus/*.index.lock
+data/research_corpus/*.index.tmp-*
 # Manual pre-migration backups of the indexes above (e.g. *.db.bak-pre-fts-porter).
 # Same content as the live databases, including private clinical text.
 data/*.db.bak*
