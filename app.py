@@ -6,6 +6,7 @@ Ollama client for querying. No extraction, chunking, embedding, FAISS, FTS5,
 prompt, or generation logic is reimplemented here.
 """
 
+import re
 import shutil
 import sys
 import tempfile
@@ -69,7 +70,10 @@ def ingest_uploaded_pdf(filename: str, file_bytes: bytes) -> dict:
     once ingestion finishes. Nothing is written into the project's data/
     directories by this function - ingest_pdf() owns the FAISS/SQLite writes.
     """
-    safe_name = Path(filename).name or "upload.pdf"
+    safe_name = Path(filename).name
+    # Characters Windows forbids in a filename (a macOS/Linux browser can
+    # still send them) plus control characters.
+    safe_name = re.sub(r'[<>:"|?*\x00-\x1f]', "_", safe_name).strip(" .") or "upload.pdf"
     if not safe_name.lower().endswith(".pdf"):
         safe_name += ".pdf"
 

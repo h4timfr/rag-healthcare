@@ -220,12 +220,19 @@ def extract_pages(pdf_path: str, report: dict | None = None) -> list[dict]:
     if not path.is_file():
         raise InvalidPDFError(f"Not a file: {pdf_path}")
 
+    open_error = None
     try:
         doc = fitz.open(str(path))
     except Exception as e:
-        raise InvalidPDFError(f"Could not open '{pdf_path}' as a PDF: {e}") from e
+        open_error = str(e)
+    # Raised outside the except block, without chaining: the original
+    # exception's traceback keeps MuPDF's half-built document alive, which
+    # holds the file open and stops the caller deleting it on Windows.
+    if open_error is not None:
+        raise InvalidPDFError(f"Could not open '{pdf_path}' as a PDF: {open_error}")
 
     try:
+        was_repaired = doc.is_repaired
         if doc.is_encrypted:
             raise InvalidPDFError(f"PDF '{pdf_path}' is encrypted/password-protected")
 
@@ -254,6 +261,13 @@ def extract_pages(pdf_path: str, report: dict | None = None) -> list[dict]:
     if report is not None:
         report["image_only_pages"] = image_only
 
+    if not pages and was_repaired and not image_only:
+        # MuPDF had to rebuild the file's structure and found neither text
+        # nor images: damaged (e.g. cut off mid-download), not scanned.
+        raise EmptyDocumentError(
+            f"No extractable text in '{pdf_path}': the file appears damaged or truncated. "
+            f"Try re-downloading or re-exporting it."
+        )
     if not pages:
         raise EmptyDocumentError(
             f"No extractable text in '{pdf_path}' (likely empty or a scanned/image-only PDF; "

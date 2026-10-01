@@ -11,6 +11,8 @@ Defects found by auditing the live system rather than the code:
                index, where they break FTS5 matching and word splitting.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pymupdf
 import pytest
@@ -267,3 +269,80 @@ def test_upload_errors_name_the_users_file_not_a_temp_path(tmp_path, monkeypatch
     assert "My Clinic Report.pdf" in message
     assert "rag_upload_" not in message
     assert "AppData" not in message
+
+
+@pytest.fixture
+def upload_dirs(tmp_path, monkeypatch):
+    """Isolated stores, and the upload temp dir created under tmp_path so
+    the test can see whether it was really removed."""
+    import app
+
+    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "metadata.db"))
+    monkeypatch.setattr(config, "FAISS_INDEX_PATH", str(tmp_path / "faiss.index"))
+    monkeypatch.setattr(ingest_script, "embed_texts", _fake_embed_texts)
+    created = []
+    real_mkdtemp = app.tempfile.mkdtemp
+
+    def tracking_mkdtemp(**kwargs):
+        path = real_mkdtemp(dir=str(tmp_path), **kwargs)
+        created.append(Path(path))
+        return path
+
+    monkeypatch.setattr(app.tempfile, "mkdtemp", tracking_mkdtemp)
+    return created
+
+
+def test_a_file_pymupdf_cannot_open_is_not_left_behind_in_temp(upload_dirs):
+    """A failed fitz.open() leaves a half-built document alive in the
+    exception's traceback, holding the file open; on Windows that made the
+    cleanup's rmtree(ignore_errors=True) silently skip it, so every rejected
+    upload's bytes stayed in %TEMP% indefinitely - measured: 13 leftovers."""
+    import app
+    from src.exceptions import InvalidPDFError
+
+    with pytest.raises(InvalidPDFError):
+        app.ingest_uploaded_pdf("damaged.pdf", b"this is not a pdf at all")
+
+    assert len(upload_dirs) == 1
+    assert not upload_dirs[0].exists()
+
+
+def test_filename_with_characters_windows_forbids_is_still_ingested(upload_dirs):
+    """A browser on macOS/Linux can send "report?<v2>.pdf"; writing that name
+    on Windows raised a raw OSError quoting the temp path."""
+    import app
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    for i in range(10):
+        page.insert_text((40, 60 + i * 16), "Readable typed clinical text.")
+    data = doc.tobytes()
+    doc.close()
+
+    result = app.ingest_uploaded_pdf('report?<v2>:"final"|*.pdf', data)
+
+    assert result["skipped"] is False
+    [document] = app.list_indexed_documents()
+    assert not set('<>:"|?*') & set(document["source"])
+
+
+def test_truncated_pdf_is_not_described_as_a_scan(tmp_path):
+    """A PDF cut off mid-download is repaired by MuPDF into a page with no
+    text and no image - it is damaged, not scanned, and telling the user to
+    look for OCR sends them the wrong way."""
+    from src.exceptions import EmptyDocumentError
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_textbox(pymupdf.Rect(40, 40, 560, 800), "Hypertension management guidance. " * 60)
+    data = doc.tobytes()
+    doc.close()
+    truncated = tmp_path / "truncated.pdf"
+    truncated.write_bytes(data[: len(data) // 2])
+
+    with pytest.raises(EmptyDocumentError) as excinfo:
+        extract_pages(str(truncated))
+
+    message = str(excinfo.value)
+    assert "damaged or truncated" in message
+    assert "scanned" not in message
