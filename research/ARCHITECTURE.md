@@ -8,7 +8,7 @@ planned work. Results are in [FINAL_REPORT.md](FINAL_REPORT.md).
 ## 1. Overview
 
 ```
-                         INGESTION (offline, per document)
+                         INGESTION (per document, before questions)
  PDF ──► pdf_extractor ──► cleaner ──► chunker ──► embedder ──┬──► FAISS index (vectors, id = chunk_id)
         (PyMuPDF + word-                (200 w,   (MiniLM-L6,  │
          geometry repair)                40 overlap) 384-d)     └──► SQLite: chunks table + chunks_fts (FTS5)
@@ -20,8 +20,13 @@ planned work. Results are in [FINAL_REPORT.md](FINAL_REPORT.md).
  UI ◄── answer (streamed) + Sources + evidence passages + timing ◄── Ollama llama3.2:3b ◄──┘
 ```
 
-Every component runs on the local machine. The only network endpoints are
-Ollama on `127.0.0.1:11434` and the Streamlit server bound to `localhost`.
+Every component runs on the local machine. At run time the app talks to
+Ollama at `127.0.0.1:11434` and serves Streamlit on `localhost`
+(`.streamlit/config.toml`, usage statistics off). Two qualifications: which
+interfaces Ollama itself listens on is Ollama's own setting, not this
+repository's; and the embedding model is loaded with `local_files_only=True`
+first but falls back to downloading it from the Hugging Face Hub if it is not
+cached (`embedder.get_model`). The Ollama model must also be pulled once.
 
 ## 2. Component responsibilities
 
@@ -30,7 +35,7 @@ Ollama on `127.0.0.1:11434` and the Streamlit server bound to `localhost`.
 | Extraction | `src/ingestion/pdf_extractor.py` | Page text via PyMuPDF; quality checks; word-geometry repair; image-only page detection |
 | Cleaning | `src/ingestion/cleaner.py` | Unicode/whitespace normalisation of page text |
 | Chunking | `src/ingestion/chunker.py` | Fixed-size word windows within a page |
-| Embedding | `src/embedding/embedder.py` | Sentence embeddings, offline model loading, warm-up |
+| Embedding | `src/embedding/embedder.py` | Sentence embeddings, cache-first model loading (download fallback), warm-up |
 | Dense index | `src/retrieval/faiss_index.py` | FAISS storage, atomic save, cross-process writer lock |
 | Metadata + keyword index | `src/retrieval/metadata_store.py`, `keyword_index.py` | Chunk rows, FTS5 search, document listing and deletion |
 | Hybrid retrieval | `src/retrieval/hybrid_retriever.py` | Dense + keyword candidates, weighted RRF, document scope, per-part retrieval, per-document balance |
@@ -66,8 +71,9 @@ a temporary file and calls the same function):
    windows of 200 words with 40 words overlap (stride 160), never crossing a
    page boundary. Each chunk keeps its page number.
 5. **Embedding** (outside the lock): `all-MiniLM-L6-v2`, 384 dimensions,
-   L2-normalised, loaded with `local_files_only` first so no network call is
-   made when the model is cached.
+   L2-normalised, loaded with `local_files_only=True` first, so no network
+   call is made when the model is cached; if it is not cached, the load falls
+   back to a normal (downloading) load.
 6. **Write** (inside `cross_process_index_lock`, an OS file lock):
    - insert all chunk rows in one SQLite transaction (`chunks` table and
      `chunks_fts`); the `AUTOINCREMENT` `chunk_id`s are returned;
@@ -97,11 +103,14 @@ rebuilds a corrupt index from SQLite.
 3. **Keyword candidates:** stopword-filtered query terms joined with `OR`,
    FTS5 `MATCH`, ordered by `bm25`, `candidate_k = 10`.
 4. When scoped to one or more documents, `candidate_k` is raised to the total
-   chunk count and the candidates are then filtered to the scope, so scoping
-   never empties the candidate lists.
+   chunk count and the candidates are then filtered to the scope, so no
+   in-scope chunk is lost to out-of-scope competitors (the keyword list can
+   still be empty if no in-scope chunk matches any query term).
 5. **Fusion:** weighted Reciprocal Rank Fusion,
    `score(c) = 2.0 / (60 + rank_dense(c)) + 1.0 / (60 + rank_keyword(c))`
-   (a missing rank contributes 0). Ties keep a deterministic order.
+   (a missing rank contributes 0). Ties keep insertion order (dense
+   candidates first, then keyword-only ones; Python's stable sort), so the
+   result is deterministic.
 6. Return the `top_k` fused chunks with page, source, score and per-stage
    timings (`embedding_ms`, `dense_ms`, `keyword_ms`, `fusion_ms`).
 
@@ -113,20 +122,28 @@ rebuilds a corrupt index from SQLite.
 - **top_k:** 5 (`config.TOP_K`); 8 for a factual question naming an explicit
   "X, Y, and Z" component list.
 - **Multi-part questions** (`intent.decompose_question`): each part is
-  retrieved separately (`retrieve_for_question`), results are de-duplicated,
-  and the total is capped at `MAX_CONTEXT_CHUNKS = 10`.
+  retrieved separately (`retrieve_for_question`, parts embedded in one batch)
+  with `max(1, min(top_k, MAX_CONTEXT_CHUNKS // parts))` chunks per part
+  (`MAX_CONTEXT_CHUNKS = 10`); results are merged and de-duplicated, and each
+  chunk is tagged with its part.
 - **Multi-document balance:** for each-document or comparison questions over
-  several documents, `_allocate_by_document` first gives each document up to
-  `BALANCED_CHUNKS_PER_DOCUMENT = 3` chunks.
-- **Presentation order:** `order_chunks_for_presentation` keeps the first two
-  fused chunks in place and may promote up to three later chunks that match at
-  least two significant query terms (or numeric evidence). It reorders, never
-  adds or removes.
+  several selected documents (`intent.needs_document_balance`), the budget is
+  `min(BALANCED_CHUNKS_PER_DOCUMENT x documents, MAX_CONTEXT_CHUNKS)` =
+  `min(3 x documents, 10)`, and `_allocate_by_document` gives each document a
+  share of it before the remainder is filled by fused score.
+- **Presentation order** (single-document, single-part turns only):
+  `order_chunks_for_presentation` keeps the first `PROTECT_FRONT = 2` fused
+  chunks in place and may promote up to `MAX_PROMOTED = 3` later chunks whose
+  text contains a number **and** at least `MIN_TERM_MATCHES = 2` distinct
+  significant query terms (`_numeric_evidence_score`; a chunk without a number
+  scores 0). Promoted chunks are ordered by that score, ties by original rank;
+  the rest keep their RRF order. It reorders, never adds or removes.
 
 ## 6. Prompt construction
 
 `prompt_builder.build_production_prompt` (one document) or
-`build_multi_document_prompt` (several), in this order:
+`build_multi_document_prompt` (several; it adds multi-document rules after the
+instructions), in this order:
 
 1. Instructions (`PRODUCTION_SYSTEM_INSTRUCTION`): the evidence is
    authoritative; check all of it before saying something is unavailable;
@@ -150,9 +167,10 @@ rebuilds a corrupt index from SQLite.
 5. Personal-advice reminder, only when `is_personal_advice_request` matches.
 6. The user question, then the `ANSWER:` cue.
 
-The research benchmark uses `eval_prompt_builder.build_eval_prompt` instead -
-a fixed neutral prompt - so production prompt changes cannot move the research
-numbers.
+The end-to-end research harness (`scripts/run_evaluation.py`) uses
+`eval_prompt_builder.build_eval_prompt` instead - a fixed neutral prompt - so
+production prompt changes do not reach its prompts; the retrieval-only
+benchmark involves no prompt at all.
 
 ## 7. Generation
 
@@ -162,8 +180,9 @@ and `num_predict` from `app.resolve_num_predict`: 256 by default; 768 for
 multi-document scope, multi-part questions, list-type or explicit-count
 factual questions, and single-document section comparisons. The stream yields
 tokens to the UI; the final message supplies Ollama's timings and
-`done_reason`, from which a truncated answer (`length`) is flagged. The model
-and the embedder are warmed up in the background at startup.
+`done_reason`, from which a truncated answer (`length`) is flagged. The
+Ollama model and the embedder are warmed up in background threads once per
+browser session, as soon as a document is active.
 
 ## 8. Evidence and source display
 
@@ -173,7 +192,8 @@ For each assistant turn the UI shows:
   limit;
 - **Sources:** the documents and pages of the evidence passages that were in
   the prompt (grouped by document);
-- **Evidence:** the verbatim text of each passage, in prompt order;
+- **Evidence:** the verbatim text of each passage, in prompt order (grouped
+  by document when several documents contributed);
 - **Timing:** retrieval stages, prompt construction, time to first token,
   generation, end to end.
 
@@ -192,7 +212,7 @@ finished with either an answer (`finish_pending_turn`) or a structured
 | Script | Purpose |
 |---|---|
 | `scripts/build_research_corpus.py` | Builds the separate research store under `data/research_corpus/` |
-| `research/counterbalanced_retrieval_benchmark.py` | Retrieval-only benchmark (5 configurations, Latin square, Wilcoxon + Holm) |
+| `research/counterbalanced_retrieval_benchmark.py` | Retrieval-only benchmark (5 configurations; the three methods timed in a Latin-square order; Wilcoxon + Holm) |
 | `scripts/run_evaluation.py`, `scripts/aggregate_runs.py` | End-to-end research runs and their aggregation |
 | `scripts/run_product_qa.py`, `src/evaluation/product_qa.py` | Product QA through the application path |
 | `research/chunk_evidence_audit.py`, `structured_question_failure_study.py`, `ambiguity_study.py` | Audits and diagnostic studies |

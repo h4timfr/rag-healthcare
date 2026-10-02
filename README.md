@@ -206,8 +206,8 @@ truncated PDF that yields no text is reported as damaged, not as a scan.
   uses by default; `scripts/query.py` and `chat.py` also use it.
 - **Document-balanced allocation** applies only when several documents are
   selected *and* the question asks about each of them or compares them
-  ("summarize each selected document separately", "compare the selected
-  documents"). It changes nothing upstream - same FAISS search, same FTS5
+  (for example "give a short overview of every selected document" or "how do
+  the selected documents differ?"). It changes nothing upstream - same FAISS search, same FTS5
   search, same RRF weights and `candidate_k` - and only changes which of the
   already-fused candidates survive truncation, giving each document a share
   of the budget before the remainder is filled by score. A document that
@@ -224,7 +224,7 @@ rules only - no second model call, and no extra latency.
   sorts a question into `factual`, `numeric`, `summary`, `each_document`,
   `comparison`, `multi_part`, `follow_up` or `unsupported` with a small set
   of regexes. `unsupported` is deliberately never inferred from wording -
-  "What was the patient's blood type?" is indistinguishable from an
+  "What was the patient's eye colour?" is indistinguishable from an
   answerable factual question, and only missing evidence makes it
   unsupported.
 - **Evidence-first prompting**
@@ -234,8 +234,8 @@ rules only - no second model call, and no extra latency.
   context" is not answering the question. Each intent adds exactly one short
   ANSWER STYLE block; multi-part questions additionally get a numbered plan
   naming each requested component.
-- **Completeness rules**, each narrowly gated and measured before it was
-  kept (see the intervention study in
+- **Completeness rules**, each narrowly gated and checked before it was
+  kept (see the exploratory, single-document intervention study in
   [`research/FINAL_REPORT.md`](research/FINAL_REPORT.md)): multi-part plans
   ask for every item the evidence gives per part, and for drugs only when the
   question is about medications; a question asking for a number of items
@@ -280,10 +280,12 @@ Known limitations, measured rather than assumed:
 - **Multi-column layouts are not reconstructed.** Text is read in PyMuPDF's
   block order, so margin commentary in a two-column document can be
   interleaved into body text (and from there into an answer).
-- **Some omissions are model-level.** With the evidence retrieved and the
-  instructions explicit, `llama3.2:3b` still omits some items (an unnamed
-  historical medication, a conditional one, one of several lines of
-  reasoning) and sometimes mixes up which items two lists share.
+- **Some omissions persist.** With the evidence retrieved and the
+  instructions explicit, `llama3.2:3b` still omitted some items in the
+  project's tests (an unnamed historical medication, a conditional one, one
+  of several lines of reasoning) and sometimes mixed up which items two lists
+  share. No prompt variant tested removed these; whether a different model
+  would is untested.
 - **No OCR.** Scanned or image-only pages carry no text layer. They are
   detected and reported at upload, and are simply absent from the index.
 - **Broken PDF text layers can only partly be repaired.** A font whose
@@ -421,10 +423,11 @@ the earlier version got wrong - see its module docstring).
   question/answer data is intentionally not committed (see "Private data"),
   but the finished reports and aggregate metrics are.
   [`research/FINAL_REPORT.md`](research/FINAL_REPORT.md) is the current
-  report: counterbalanced dense vs. hybrid vs. production-path retrieval,
+  report: dense vs. hybrid vs. production-path retrieval with
   Holm-corrected paired tests, the chunk-level ground-truth audit,
-  end-to-end results, a failure taxonomy, the answer-completeness
-  intervention study, and safety results. Companion documents:
+  descriptive end-to-end results (research harness, not the app's path), a
+  failure taxonomy, an exploratory answer-completeness intervention study,
+  safety probes, a claim audit and reproduction notes. Companion documents:
   [`CONTRIBUTION.md`](research/CONTRIBUTION.md) (research questions, claims
   and explicit non-claims), [`ARCHITECTURE.md`](research/ARCHITECTURE.md)
   (component-level design), [`RESULTS_TABLE.md`](research/RESULTS_TABLE.md)
