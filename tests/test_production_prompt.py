@@ -11,6 +11,7 @@ SYSTEM_INSTRUCTION byte for byte.
 import pytest
 
 from src.generation.prompt_builder import (
+    HISTORY_HEADER,
     PRODUCTION_SYSTEM_INSTRUCTION,
     SYSTEM_INSTRUCTION,
     build_answer_plan,
@@ -126,7 +127,7 @@ def test_follow_up_style_points_at_the_conversation():
     prompt = _production("What about the medications in that report?", history=history)
 
     assert "continues the conversation above" in prompt
-    assert "RECENT CONVERSATION:" in prompt
+    assert HISTORY_HEADER in prompt
 
 
 # --- multi-component factual answer style (Task 6) ----------------------
@@ -656,7 +657,7 @@ def test_answer_style_still_precedes_the_question_with_history():
     history = [{"role": "user", "content": "prior turn"}]
     prompt = _production("Summarize this document.", history=history)
 
-    assert prompt.index("RECENT CONVERSATION:") < prompt.index("ANSWER STYLE")
+    assert prompt.index(HISTORY_HEADER) < prompt.index("ANSWER STYLE")
     assert prompt.index("ANSWER STYLE") < prompt.index("USER QUESTION:")
 
 
@@ -670,7 +671,7 @@ def test_history_still_sits_between_evidence_and_the_question():
     prompt = _production("current question", history=history)
 
     evidence_idx = prompt.index("EVIDENCE:")
-    history_idx = prompt.index("RECENT CONVERSATION:")
+    history_idx = prompt.index(HISTORY_HEADER)
     question_idx = prompt.index("USER QUESTION:")
     answer_idx = prompt.rindex("ANSWER:")
 

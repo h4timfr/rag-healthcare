@@ -491,6 +491,27 @@ def build_context(
     return "\n\n".join(blocks)
 
 
+# Header for the RECENT CONVERSATION section of the production prompts.
+#
+# The section sits between the EVIDENCE and the question, i.e. closer to the
+# question than the evidence - and llama3.2:3b weights what is nearest the
+# question most (see _ANSWER_STYLE_PLACEMENT). Under a bare
+# "RECENT CONVERSATION:" header the model treated its own earlier answers as
+# authoritative: after a wrong turn ("She was taking a medication that would
+# treat her high BP ..."), "What medication did she take for hypertension?"
+# was answered "No medication is mentioned" in 10 of 10 runs, although
+# EVIDENCE [1] read "began on unknown medication. Stopped after 6 months
+# because of drowsiness." With this header the same prompt was answered from
+# the evidence in 10 of 10 runs, and pronoun follow-ups ("And her mother?",
+# "How was it treated?") still resolved in 15 of 15. History is still needed
+# to resolve references; this only says it is not a source of facts.
+HISTORY_HEADER = (
+    "RECENT CONVERSATION (earlier turns - use them only to work out what the "
+    'question refers to, such as who "she" is or what "it" means. Earlier '
+    "answers are not evidence and may be wrong or incomplete: answer from the "
+    "EVIDENCE above, even if an earlier answer said something was not mentioned):"
+)
+
 MAX_HISTORY_TURNS = 4
 MAX_HISTORY_CHARS_PER_TURN = 1500
 
@@ -825,7 +846,7 @@ def build_production_prompt(
         answer_style = build_answer_style(query, resolved_intent, history=history)
 
     history_text = format_conversation_history(history)
-    history_section = f"\n\nRECENT CONVERSATION:\n{history_text}" if history_text else ""
+    history_section = f"\n\n{HISTORY_HEADER}\n{history_text}" if history_text else ""
 
     # ANSWER STYLE sits AFTER the evidence, immediately before the question
     # and the generation cue - see _ANSWER_STYLE_PLACEMENT.
@@ -1030,7 +1051,7 @@ def build_multi_document_prompt(
         )
 
     history_text = format_conversation_history(history)
-    history_section = f"\n\nRECENT CONVERSATION:\n{history_text}" if history_text else ""
+    history_section = f"\n\n{HISTORY_HEADER}\n{history_text}" if history_text else ""
 
     # ANSWER STYLE after the evidence, immediately before the question - see
     # _ANSWER_STYLE_PLACEMENT. It matters most here: this is the longest
