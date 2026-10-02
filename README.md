@@ -64,7 +64,8 @@ Chunk metadata (`document_id`, `source`, `page`, `text`) lives in SQLite;
 the same integer id is used as the FAISS vector id (`IndexIDMap`), so the two
 stores stay in lockstep. Deleting a document removes its rows/FTS entries
 from SQLite and its vectors from FAISS (exact removal, not a rebuild - see
-"Document deletion" below).
+"Document deletion" below). A component-level description, with every
+parameter, is in [`research/ARCHITECTURE.md`](research/ARCHITECTURE.md).
 
 ## Technology stack
 
@@ -74,7 +75,7 @@ from SQLite and its vectors from FAISS (exact removal, not a rebuild - see
 | PDF extraction | PyMuPDF |
 | Embeddings | `sentence-transformers/all-MiniLM-L6-v2` (384-dim) |
 | Dense retrieval | FAISS (`IndexFlatIP` over normalized vectors = cosine similarity) |
-| Keyword retrieval | SQLite FTS5 (BM25) |
+| Keyword retrieval | SQLite FTS5 (BM25, `porter unicode61` tokenizer) |
 | Fusion | Weighted Reciprocal Rank Fusion (RRF) |
 | Generation | Ollama, `llama3.2:3b`, local only |
 | Metadata storage | SQLite |
@@ -233,6 +234,17 @@ rules only - no second model call, and no extra latency.
   context" is not answering the question. Each intent adds exactly one short
   ANSWER STYLE block; multi-part questions additionally get a numbered plan
   naming each requested component.
+- **Completeness rules**, each narrowly gated and measured before it was
+  kept (see the intervention study in
+  [`research/FINAL_REPORT.md`](research/FINAL_REPORT.md)): multi-part plans
+  ask for every item the evidence gives per part, and for drugs only when the
+  question is about medications; a question asking for a number of items
+  ("give 3-5 reasons") gets the list style; a comparison of two parts of one
+  document (an initial vs a revised list) gets section-identity instructions.
+- **Output budget.** 256 tokens by default; 768 for multi-document scope,
+  multi-part questions, list-type and item-count questions, and
+  single-document section comparisons. An answer that still hits the limit
+  is labelled as cut off in the UI.
 - **Structured evidence context** for multi-document questions groups
   retrieved text into self-describing `DOCUMENT:` / `PAGE:` / `EVIDENCE [n]:`
   blocks, so no block can be read without knowing which document it came
@@ -265,6 +277,13 @@ Known limitations, measured rather than assumed:
   studies a literature survey cites, both `llama3.2:3b` and a 7B model
   answered incorrectly (3 and 4, against a true 5). Counting across
   passages is a known weak point.
+- **Multi-column layouts are not reconstructed.** Text is read in PyMuPDF's
+  block order, so margin commentary in a two-column document can be
+  interleaved into body text (and from there into an answer).
+- **Some omissions are model-level.** With the evidence retrieved and the
+  instructions explicit, `llama3.2:3b` still omits some items (an unnamed
+  historical medication, a conditional one, one of several lines of
+  reasoning) and sometimes mixes up which items two lists share.
 - **No OCR.** Scanned or image-only pages carry no text layer. They are
   detected and reported at upload, and are simply absent from the index.
 - **Broken PDF text layers can only partly be repaired.** A font whose
@@ -404,7 +423,13 @@ the earlier version got wrong - see its module docstring).
   [`research/FINAL_REPORT.md`](research/FINAL_REPORT.md) is the current
   report: counterbalanced dense vs. hybrid vs. production-path retrieval,
   Holm-corrected paired tests, the chunk-level ground-truth audit,
-  end-to-end and safety results, and a claim-by-claim evidence table.
+  end-to-end results, a failure taxonomy, the answer-completeness
+  intervention study, and safety results. Companion documents:
+  [`CONTRIBUTION.md`](research/CONTRIBUTION.md) (research questions, claims
+  and explicit non-claims), [`ARCHITECTURE.md`](research/ARCHITECTURE.md)
+  (component-level design), [`RESULTS_TABLE.md`](research/RESULTS_TABLE.md)
+  (paper-ready tables) and [`DEMO_SCRIPT.md`](research/DEMO_SCRIPT.md) (a
+  review walkthrough).
   [`research/REPORT.md`](research/REPORT.md) is the earlier generated report
   for publication runs 1-4, which predate the FTS5 Porter-stemming change
   (its hybrid MRR/nDCG are lower than the current index's); it is kept as a
@@ -441,11 +466,21 @@ rag-healthcare/
 │   ├── ingestion/          # PDF extraction, cleaning, chunking
 │   ├── embedding/          # Embedding model wrapper
 │   ├── retrieval/          # FAISS, FTS5, hybrid retriever, metadata store
-│   ├── generation/         # Prompt building, Ollama client
-│   └── evaluation/         # Metrics and aggregation for the eval harness
-├── scripts/                # ingest / query / evaluate / build-corpus CLIs
+│   ├── generation/         # Intent rules, prompt building, answer validation, Ollama client
+│   ├── evaluation/         # Metrics, aggregation and product QA grading
+│   └── ui/                 # Icon set for the Streamlit app
+├── scripts/                # ingest / query / evaluate / build-corpus / product QA CLIs
 ├── tests/                  # pytest suite
-├── research/               # Evaluation report, results, figures, report generator
+├── research/
+│   ├── FINAL_REPORT.md     # Current research report
+│   ├── CONTRIBUTION.md     # Research questions, contributions, non-claims
+│   ├── ARCHITECTURE.md     # Component-level system description
+│   ├── RESULTS_TABLE.md    # Paper-ready result tables
+│   ├── DEMO_SCRIPT.md      # Review demo walkthrough
+│   ├── REPORT.md           # Historical generated report (runs 1-4)
+│   ├── results/            # Frozen retrieval benchmark results
+│   ├── figures/            # Report figures
+│   └── *.py                # Benchmark, audits, diagnostic studies, report generator
 ├── data/
 │   ├── raw_pdfs/.gitkeep
 │   └── research_corpus/raw/.gitkeep
