@@ -38,7 +38,7 @@ The system is a research prototype. It is not a diagnostic device, does not repl
 
 ### A. System Overview
 
-![Fig. 1. Architecture of the local healthcare-document RAG system: ingestion (top) and per-question retrieval, generation and presentation (bottom).](figures/fig1_architecture.png){w=3.4}
+![Fig. 1. Architecture of the local healthcare-document RAG system: ingestion (top) and per-question retrieval, generation and presentation (bottom).](figures/fig1_architecture.png){w=3.487}
 
 Fig. 1 shows the architecture. A Streamlit interface accepts PDF uploads and questions. Ingestion extracts, cleans and chunks each document, embeds the chunks, and writes them to a FAISS index, a SQLite metadata table and an FTS5 index. At question time the dense and lexical retrievers each return ten candidates, which are fused, scoped and ordered into a prompt for a locally served language model. Processing runs on one consumer machine: Streamlit binds to localhost, the application contacts Ollama at 127.0.0.1, and the embedding model is loaded from the local cache (downloaded once if absent).
 
@@ -84,7 +84,7 @@ A personal-advice reminder is added to the prompt only when a question is phrase
 
 Results carry one of three provenance tiers. Tier 1 results are reproducible from the repository (the frozen retrieval benchmark, the test suite and the configuration). Tier 2 results were measured on stated dates but cannot be reproduced from the repository (end-to-end runs, product QA, safety probes, the intervention study and performance measurements). Tier 3 statements are interpretation. Fig. 2 outlines the pipeline; tiers are not combined in any claim.
 
-![Fig. 2. Experimental evaluation pipeline, separating retrieval evaluation (Tier 1) from generation evaluation (Tier 2).](figures/fig2_evaluation_pipeline.png){w=3.4}
+![Fig. 2. Experimental evaluation pipeline, separating retrieval evaluation (Tier 1) from generation evaluation (Tier 2).](figures/fig2_evaluation_pipeline.png){w=3.487}
 
 ### A. Research Corpus
 
@@ -153,7 +153,7 @@ Table: Retrieval evidence metrics and latency (n = 45). Evid. cov. = evidence te
 | Scoped hybrid | 0.9333 | 0.8259 | 0.8530 | 0.9333 | 31.32 | 34.23 |
 | Production | 0.9333 | 0.8296 | 0.8561 | 0.9333 | 40.79* | 53.53* |
 
-![Fig. 3. Retrieval evidence metrics for the five configurations (n = 45). Evidence term coverage equals Recall@5 in every configuration.](figures/fig3_retrieval_results.png){w=3.4}
+![Fig. 3. Retrieval evidence metrics for the five configurations (n = 45). Evidence term coverage equals Recall@5 in every configuration.](figures/fig3_retrieval_results.png){w=3.487}
 
 ### B. Statistical Comparison
 
@@ -198,7 +198,7 @@ Of the ten run-5 hybrid generation failures, nine had the missing expected term 
 
 A live check on a public CDC diabetes report illustrates a retrieval-stage failure (Fig. 5). Asked for the 2017-2018 age-adjusted prevalence of diagnosed diabetes among adults with less than a high-school education, the system did not retrieve the table holding the 2017-2018 value (13.3%) and, in three of three runs, answered 12.7 (11.4-14.2): the 2013-2016 value from a neighboring table, with the period unstated. A sub-group-versus-total failure expected on a related question was not reproduced and is not claimed.
 
-![Fig. 4. Qualitative taxonomy of observed failure modes by pipeline stage; no frequencies are implied.](figures/fig4_failure_taxonomy.png){w=3.4}
+![Fig. 4. Qualitative taxonomy of observed failure modes by pipeline stage; no frequencies are implied.](figures/fig4_failure_taxonomy.png){w=3.487}
 
 Table: Observed failure modes. Locus: R = retrieval, G = generation, ext. = extraction. Evidence status uses the provenance tiers of Section IV. {w=0.22,1.42,0.33,1.50 keep=0}
 | ID | Definition and example | Locus | Status and limitation |
@@ -213,7 +213,7 @@ Table: Observed failure modes. Locus: R = retrieval, G = generation, ext. = extr
 | F8 | Documented treatment restated as a recommendation without attribution (3 of 3 runs of one probe). | G | Tier 2; one probe, private document; reminder is regex-gated. |
 
 
-![Fig. 5. Live check on a public CDC report: the 2017-2018 table was not retrieved and the answer used the 2013-2016 value (3 of 3 runs).](figures/fig5_demo_failure.png){w=3.4}
+![Fig. 5. Live check on a public CDC report: the 2017-2018 table was not retrieved and the answer used the 2013-2016 value (3 of 3 runs).](figures/fig5_demo_failure.png){w=3.487}
 
 ### F. Intervention Study
 

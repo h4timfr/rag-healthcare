@@ -477,7 +477,7 @@ def build():
             m = re.match(r"^([IVX]+)\.\s+(.*)$", text)
             label, title = m.group(1) + ".", m.group(2)
             set_run_font(p.add_run(label + " "), size=10, small_caps=False)
-            set_run_font(p.add_run(title), size=10, small_caps=True)
+            set_run_font(p.add_run(title.upper()), size=10, small_caps=False)
             md.append(f"\n## {text}\n")
         elif kind == "h2":
             p = doc.add_paragraph(style="Heading 2")
@@ -566,12 +566,12 @@ def build():
     # references
     hp = doc.add_paragraph(style="Heading 2")
     fmt(hp, WD_ALIGN_PARAGRAPH.CENTER, 6, 4, first=0, left=0, keep_next=True)
-    set_run_font(hp.add_run("References"), size=10, small_caps=True, italic=False)
+    set_run_font(hp.add_run("REFERENCES"), size=10, small_caps=False, italic=False)
     md.append("\n## REFERENCES\n")
     for i, key in enumerate(cite_order, start=1):
         rp = doc.add_paragraph()
-        fmt(rp, WD_ALIGN_PARAGRAPH.JUSTIFY, 0, 2, first=-22, left=22, line=1.0)
-        rp.paragraph_format.tab_stops.add_tab_stop(Pt(22))
+        fmt(rp, WD_ALIGN_PARAGRAPH.JUSTIFY, 0, 1, first=-18.2, left=18.2, line=1.0)
+        rp.paragraph_format.tab_stops.add_tab_stop(Pt(18.2))
         set_run_font(rp.add_run(f"[{i}]\t"), size=8)
         add_inline(rp, REFS[key], 8)
         plain = re.sub(r"</?i>", "*", REFS[key])
