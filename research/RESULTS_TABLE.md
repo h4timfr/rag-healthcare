@@ -3,15 +3,16 @@
 Copy-ready summary of the results in [FINAL_REPORT.md](FINAL_REPORT.md), which
 gives the definitions, provenance and caveats. The tables are grouped by
 metric family; numbers from different families must not be compared with
-each other.
+each other. Provenance tiers are defined in FINAL_REPORT.md ("How to read the
+numbers").
 
 | Family | Tables | Status |
 |---|---|---|
-| Retrieval evidence metrics (no generation) | 1, 2 | VERIFIED; committed result file; deterministic |
-| Answer metric and joint pass metric (research harness, whole-corpus retrieval, evaluation prompt) | 3 | OBSERVED; one run per row; local result files |
-| Product QA (application path) | 4 | OBSERVED; historical (before commit `fd1cdd5`), private documents, not re-runnable now |
-| Exploratory intervention results | 5 | OBSERVED; one document, 5 near-identical runs per condition, not persisted in the repository |
-| Safety probes | 6 | OBSERVED; private documents, 3 near-identical repeats |
+| Retrieval evidence metrics (no generation) | 1, 2 | Tier 1: committed result file and script; deterministic |
+| Answer metric and joint pass metric (research harness, whole-corpus retrieval, evaluation prompt) | 3 | Tier 2: one run per row; local, git-ignored result files |
+| Product QA (application path) | 4 | Tier 2: historical (before commit `fd1cdd5`), private documents, not re-runnable now |
+| Exploratory intervention results | 5 | Tier 2 (Tier 3 for the "Class" column): one document, 5 near-identical runs per condition, not persisted in the repository |
+| Safety probes | 6 | Tier 2: private documents, 3 near-identical repeats, session record |
 
 Retrieval: `research/results/counterbalanced_retrieval_20261001T081145Z.json`.
 n = 45 questions, 5 documents, 225 chunks, k = 5.

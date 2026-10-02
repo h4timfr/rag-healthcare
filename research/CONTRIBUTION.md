@@ -12,6 +12,13 @@ research harness, **product QA** (application path, historical), and
 **exploratory intervention results** (one document, few near-identical
 generations).
 
+Provenance tiers (defined in FINAL_REPORT.md): **Tier 1** - repository-
+reproducible (frozen retrieval benchmark, test suite, configuration);
+**Tier 2** - measured but historical or not reproducible from the repository
+(end-to-end runs, product QA, safety probes, intervention study, performance,
+ambiguity and audit outputs, demo checks); **Tier 3** - interpretation (model
+attribution, extraction attribution, failure-class labels).
+
 ## Research problem
 
 A healthcare-document question-answering system that must stay on one machine
@@ -43,13 +50,13 @@ failures respond to which kind of intervention?**
 
 ## Hypotheses (stated where the evidence allows a test)
 
-| Hypothesis | Outcome |
-|---|---|
-| H1. Hybrid improves ranking (MRR/nDCG) over dense in the whole corpus | supported: +0.117 MRR@5, 13/0 wins/losses, Holm p = 0.0024 |
-| H2. The same holds when retrieval is scoped to the question's document | directional only: +0.086 MRR@5, 11/2, Holm p = 0.168 over 10 tests (0.042 over the 4 ranking tests) |
-| H3. Hybrid improves Recall@5 | not supported: 1 question differs (global), 1/1 (scoped) |
-| H4. A ranking gain improves the end-to-end joint pass rate | not tested statistically; no supporting evidence. Five single runs of the research harness (whole-corpus retrieval, evaluation prompt - not the production path) gave overlapping pass counts (dense 34-36, hybrid 32-35); run 5 had dense 35/45, hybrid 32/45, which is descriptive only |
-| H5. Pre-generation retrieval signals detect retrieval misses | not supported: best AUROC 0.913 on 3 positives, family-wise p = 0.121 |
+| Hypothesis | Outcome | Tier |
+|---|---|---|
+| H1. Hybrid improves ranking (MRR/nDCG) over dense in the whole corpus | supported: +0.117 MRR@5, 13/0 wins/losses, Holm p = 0.0024 | 1 |
+| H2. The same holds when retrieval is scoped to the question's document | directional only: +0.086 MRR@5, 11/2, Holm p = 0.168 over 10 tests (0.042 over the 4 ranking tests) | 1 |
+| H3. Hybrid improves Recall@5 | not supported: 1 question differs (global), 1/1 (scoped) | 1 |
+| H4. A ranking gain improves the end-to-end joint pass rate | not tested statistically; no supporting evidence. Five single runs of the research harness (whole-corpus retrieval, evaluation prompt - not the production path) gave overlapping pass counts (dense 34-36, hybrid 32-35); run 5 had dense 35/45, hybrid 32/45, which is descriptive only | 2 |
+| H5. Pre-generation retrieval signals detect retrieval misses | not supported: best AUROC 0.913 on 3 positives, family-wise p = 0.121 | 2 |
 
 Research questions 4-6 are descriptive (failure classification, exploratory
 intervention and probe results over small numbers of runs) and are not framed
@@ -115,24 +122,42 @@ as hypothesis tests.
   gave a false "nothing reported" in all 3 runs). Rewording the global rule
   instead degraded an unrelated summary in 4 of 5 runs.
 
-## Novelty boundaries
+## Novelty boundaries and positioning
 
-The architecture is standard. Hybrid lexical + dense retrieval, (weighted)
-Reciprocal Rank Fusion, FAISS, SQLite FTS5, sentence-transformer embeddings,
-local inference with Ollama, intent-specific prompt instructions and
-refusal/abstention prompting are all established techniques. That RAG answers
-can be unfaithful or incomplete, that small models omit components of
-multi-part questions, and that models wrongly claim information is absent are
-likely reported in prior work; these statements need citations to primary
-sources before publication (FINAL_REPORT.md Section 24 lists works identified
-for positioning, none yet read in full or verified).
+Full related work and references: FINAL_REPORT.md Sections 24 and 27.
 
-What may be useful to others is methodological and empirical, and is **not
-yet supported by a systematic literature comparison**: the combination of
-corrected retrieval measurement in the deployed scoped setting including the
-production path, failure attribution checked against the actual retrieved
-text, and an intervention study that reports side effects and non-effects -
-on a small, fully local system.
+- RAG itself is established (Lewis et al., 2020).
+- Dense retrieval with sentence embeddings (Reimers & Gurevych, 2019), BM25
+  lexical ranking (Robertson & Zaragoza, 2009), Reciprocal Rank Fusion
+  (Cormack et al., 2009) and FAISS (Johnson et al., 2017) are established;
+  the 2:1 fusion weighting used here is a configuration choice.
+- Medical RAG evaluation is established (Xiong et al., 2024), and recent
+  healthcare RAG evaluation has been charted by layer - retrieval, grounding
+  and faithfulness, evidence verification, safety, deployment (Zhao et al.,
+  2026).
+- Hallucination evaluation under RAG (Niu et al., 2024) and context-sufficiency
+  analysis, including the finding that smaller models often hallucinate or
+  abstain even with sufficient context (Joren et al., 2025), are established.
+- Citation faithfulness in medical RAG has been evaluated at sentence level
+  (Ma et al., 2026).
+- Therefore this project does not claim a novel RAG architecture, retrieval
+  algorithm or evaluation method. Intent-specific prompt instructions,
+  the personal-advice reminder and local serving with Ollama are engineering
+  choices, not claimed contributions.
+
+The contribution is framed as **a reliability-oriented empirical evaluation
+of a local healthcare-document RAG system, combining retrieval-layer
+comparison, production-path measurement, answer-level failure analysis,
+safety probes, and controlled prompt-generation interventions.** It differs
+from the cited work in scope, not method: one deployed configuration on a
+small, partly private corpus rather than a large public benchmark (Xiong et
+al., 2024); a lexical evidence check and manual reading rather than an
+autorated sufficiency label (Joren et al., 2025); no hallucination-span or
+sentence-level citation annotation (Niu et al., 2024; Ma et al., 2026); and,
+in the layers charted by Zhao et al. (2026), retrieval-layer evaluation and
+offline safety probes, partial grounding and source-correctness checks, and
+no deployment or workflow evaluation. Whether this combination is new has not
+been assessed by a systematic literature search and is not claimed.
 
 ## Explicit non-claims
 

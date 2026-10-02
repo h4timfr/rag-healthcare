@@ -276,7 +276,7 @@ Known limitations, measured rather than assumed:
 - **Small-model arithmetic and counting are unreliable.** Asked how many
   studies a literature survey cites, both `llama3.2:3b` and a 7B model
   answered incorrectly (3 and 4, against a true 5). Counting across
-  passages is a known weak point.
+  passages failed repeatedly in this project's tests.
 - **Multi-column layouts are not reconstructed.** Text is read in PyMuPDF's
   block order, so margin commentary in a two-column document can be
   interleaved into body text (and from there into an answer).
