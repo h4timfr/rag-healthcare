@@ -43,6 +43,13 @@ def get_model():
     return _model
 
 
+def is_model_loaded() -> bool:
+    """True once get_model() has finished loading the model in this process.
+    Never loads it: the app uses this only to label a first question's wait
+    honestly (see app.wait_for_search_model)."""
+    return _model is not None
+
+
 def warm_up() -> None:
     """Load the embedding model in a background daemon thread.
 

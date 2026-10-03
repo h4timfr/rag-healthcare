@@ -22,6 +22,8 @@ import streamlit as st
 
 from scripts import ingest as ingest_module
 from src import config
+from src.embedding.embedder import get_model as get_embedding_model
+from src.embedding.embedder import is_model_loaded as embedding_model_loaded
 from src.embedding.embedder import warm_up as warm_up_embedder
 from src.exceptions import (
     DatabaseNotFoundError,
@@ -1673,6 +1675,8 @@ def timing_rows(timing: dict) -> list[tuple[str, str]]:
     """Readable (label, value) rows for the timing panel; stages that
     weren't measured are left out rather than shown as 0 ms."""
     rows = []
+    if "model_load_ms" in timing:
+        rows.append(("Starting the search model (first question only)", f"{timing['model_load_ms']:.0f} ms"))
     retrieval_keys = ("embedding_ms", "dense_ms", "keyword_ms", "fusion_ms")
     if any(k in timing for k in retrieval_keys):
         retrieval_ms = sum(timing.get(k, 0.0) for k in retrieval_keys)
@@ -1994,6 +1998,26 @@ def render_completion_status(total_ms: float, truncated: bool, chunks: list[dict
     st.caption(text)
 
 
+def wait_for_search_model(timing: dict) -> None:
+    """Block until the embedding model is loaded, timing the wait separately.
+
+    The first question after the server starts used to report the one-time
+    load of the ML libraries (torch, transformers, sentence-transformers:
+    15-50 s measured on the reference machine, depending on the OS file
+    cache) as "Finding relevant passages", although retrieval itself takes
+    tens of milliseconds. The background warm-up (embedder.warm_up) starts
+    that load on the first page render; this waits for it - or loads the
+    model, if no warm-up ran - and records the wait as `model_load_ms`, so
+    the retrieval timing that follows measures retrieval only. Once loaded
+    it returns at once and records nothing.
+    """
+    if embedding_model_loaded():
+        return
+    t0 = time.perf_counter()
+    get_embedding_model()
+    timing["model_load_ms"] = (time.perf_counter() - t0) * 1000
+
+
 def _stage(placeholder, text: str) -> None:
     placeholder.markdown(
         f'<div class="stage"><span class="stage-spinner"></span>{escape(text)}</div>', unsafe_allow_html=True
@@ -2041,8 +2065,11 @@ def run_pending_turn(pending: dict, documents: list[dict]) -> None:
         # milliseconds, the real wait is generation. Cleared the instant the
         # first token arrives (on_first_token below).
         stage = st.empty()
-        _stage(stage, "Searching the documents in scope…")
         try:
+            if not embedding_model_loaded():
+                _stage(stage, "Starting the search model - the first question after start-up takes longer…")
+                wait_for_search_model(timing)
+            _stage(stage, "Searching the documents in scope…")
             chunks, prompt = retrieve_and_build_prompt(
                 query,
                 top_k=scope["top_k"],

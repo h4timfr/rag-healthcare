@@ -176,6 +176,9 @@ def chat_app(tmp_path, monkeypatch):
     monkeypatch.setattr(ingest_script, "embed_texts", _fake_vectors_for_texts)
     monkeypatch.setattr(hybrid_module, "embed_query", lambda q: _fake_vectors(1)[0])
     monkeypatch.setattr(embedder_module, "warm_up", lambda: None)
+    # Queries are embedded by the fake above, so the real model is never
+    # needed; report it ready so a turn does not wait to load it.
+    monkeypatch.setattr(embedder_module, "is_model_loaded", lambda: True)
     monkeypatch.setattr(ollama_module, "warm_up", lambda: None)
     monkeypatch.setattr(ollama_module, "get_status", lambda: {"ready": True, "detail": "Ready"})
     pdf = tmp_path / "note.pdf"
