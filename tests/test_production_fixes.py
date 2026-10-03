@@ -148,8 +148,17 @@ def test_single_document_stream_omits_num_predict_override(monkeypatch):
 
 
 def test_multi_document_scope_gets_the_larger_budget():
-    assert app.resolve_num_predict("anything", None, [{"document_id": "d1", "source": "a.pdf"}]) == (
-        config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT
+    inventory = [{"document_id": "d1", "source": "a.pdf"}, {"document_id": "d2", "source": "b.pdf"}]
+    assert app.resolve_num_predict("anything", None, inventory) == config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT
+
+
+def test_one_document_selection_gets_the_single_document_budget():
+    """One document ticked in "Selected documents" is answered with the
+    single-document prompt, so it gets the same budget as Active scope."""
+    one = [{"document_id": "d1", "source": "a.pdf"}]
+    assert app.resolve_num_predict("What is the patient allergic to?", None, one) is None
+    assert app.resolve_num_predict("What is the patient allergic to?", None, one) == (
+        app.resolve_num_predict("What is the patient allergic to?", None, None)
     )
 
 

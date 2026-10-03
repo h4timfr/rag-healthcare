@@ -79,6 +79,7 @@ def retrieve_hybrid(
     timing: dict | None = None,
     balance_by_document: bool = False,
     query_vector=None,
+    expand_keyword_stems: bool = False,
 ) -> list[dict]:
     """Retrieve using FAISS + FTS5 and fuse rankings with weighted RRF.
 
@@ -105,6 +106,12 @@ def retrieve_hybrid(
     ordinary multi-document questions are completely unaffected) changes only
     which chunks are kept from the END of the fused ranking, for
     each-document and comparison questions. See _allocate_by_document().
+
+    `expand_keyword_stems` (default False) is forwarded to
+    KeywordIndex.search(expand_stems=...): a query word that matches no
+    indexed text also matches its word family by stem prefix ("allergic" ->
+    "allerg*"). Only the production app opts in (see app.retrieve_hybrid);
+    the default keeps the research benchmark's retrieval byte-identical.
 
     `query_vector` (optional): a precomputed, already-normalized embedding
     for `query` - e.g. from one batched embed_texts() call across several
@@ -170,6 +177,7 @@ def retrieve_hybrid(
     keyword_results = keyword_index.search(
         query,
         effective_candidate_k,
+        expand_stems=expand_keyword_stems,
     )
     t3 = time.perf_counter()
 

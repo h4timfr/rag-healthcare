@@ -53,7 +53,8 @@ from src.generation.ollama_client import (
 from src.generation.prompt_builder import build_prompt, order_chunks_for_presentation
 from src.retrieval.document_reference import resolve_document_reference
 from src.retrieval.faiss_index import FaissIndex, cross_process_index_lock
-from src.retrieval.hybrid_retriever import retrieve_for_question, retrieve_hybrid
+from src.retrieval.hybrid_retriever import retrieve_for_question
+from src.retrieval.hybrid_retriever import retrieve_hybrid as _shared_retrieve_hybrid
 from src.retrieval.index_consistency import check_consistency, repair
 from src.retrieval.metadata_store import MetadataStore
 from src.ui.icons import (
@@ -283,6 +284,27 @@ def build_document_inventory(documents: list[dict], selected_document_ids) -> li
     ]
 
 
+def is_multi_document_inventory(document_inventory: list[dict] | None) -> bool:
+    """True only when a turn really spans several documents. A one-document
+    inventory (one document ticked in "Selected documents") is a
+    single-document turn and must take the single-document path, exactly as
+    product QA has always run it - see retrieve_and_build_prompt()."""
+    return bool(document_inventory) and len(document_inventory) > 1
+
+
+def retrieve_hybrid(query: str, **kwargs) -> list[dict]:
+    """The app's retrieval: src.retrieval.hybrid_retriever.retrieve_hybrid
+    with keyword stem expansion on (see KeywordIndex._sanitize_query).
+
+    Production-only on purpose. The research benchmark imports the shared
+    function directly and keeps its default (expansion off), so its frozen
+    dense/hybrid configurations are unaffected; only answers given through
+    this app (and its production-path measurements) use the expansion.
+    Every call site in this module goes through this name, so tests that
+    patch app.retrieve_hybrid replace it wholesale."""
+    return _shared_retrieve_hybrid(query, expand_keyword_stems=True, **kwargs)
+
+
 def resolve_retrieval_top_k(
     analysis_scope: str, selected_document_ids, balanced: bool = False
 ) -> int:
@@ -381,6 +403,9 @@ def resolve_num_predict(
     component. Gated on FACTUAL specifically (not every factual question)
     so an ordinary single-fact question keeps the smaller default budget.
     """
+    # A one-document selection is answered with the single-document prompt
+    # (see retrieve_and_build_prompt), so it gets the single-document budget.
+    multi_document = is_multi_document_inventory(document_inventory)
     multi_part = len(decompose_question(query, history=history)) > 1
     intent = classify_intent(query, history=history)
     enumeration = intent == FACTUAL and (is_enumeration_question(query) or requests_item_count(query))
@@ -390,9 +415,9 @@ def resolve_num_predict(
     # times, and 0 of 5 at this budget. Same gate as the section-comparison
     # answer style in prompt_builder.build_production_prompt.
     single_document_comparison = (
-        not document_inventory and intent == COMPARISON and compares_document_sections(query)
+        not multi_document and intent == COMPARISON and compares_document_sections(query)
     )
-    if document_inventory or multi_part or enumeration or single_document_comparison:
+    if multi_document or multi_part or enumeration or single_document_comparison:
         return config.OLLAMA_NUM_PREDICT_MULTI_DOCUMENT
     return None
 
@@ -483,21 +508,28 @@ def retrieve_and_build_prompt(
         if reference:
             document_inventory = list(reference.documents)
             retrieve_kwargs["document_id"] = reference.document_ids
-            if len(document_inventory) == 1:
-                # Narrowed to exactly one document, so this is no longer a
-                # multi-document turn: drop to the single-document prompt,
-                # the same one active-document scope uses.
-                #
-                # Keeping the multi-document prompt here actively misleads
-                # the model. Asked "what about the third document?" with the
-                # evidence correctly narrowed to that document, it read
-                # rules headed "1 documents are selected" alongside a rule
-                # about documents whose evidence was not retrieved, and
-                # answered that the third document was a different file
-                # whose evidence block was empty. The single-document prompt
-                # has no such machinery and answers it correctly.
-                document_inventory = None
-                retrieve_kwargs["top_k"] = config.TOP_K
+        if not is_multi_document_inventory(document_inventory):
+            # Exactly one document - selected outright, or narrowed to by a
+            # reference above - so this is not a multi-document turn: drop
+            # to the single-document prompt and retrieval path, the same
+            # ones active-document scope uses. retrieve_hybrid() treats a
+            # one-element document_id list and the bare id identically, so
+            # the retrieval scope is unchanged.
+            #
+            # Keeping the multi-document prompt here actively misleads
+            # the model. Asked "what about the third document?" with the
+            # evidence correctly narrowed to that document, it read
+            # rules headed "1 documents are selected" alongside a rule
+            # about documents whose evidence was not retrieved, and
+            # answered that the third document was a different file
+            # whose evidence block was empty. With one document selected
+            # outright (no reference), "What treatment was she taking for
+            # it?" named a drug absent from the evidence ("beta blockers")
+            # in 4 of 10 runs under the multi-document prompt and 0 of 10
+            # under the single-document prompt, on identical chunks. The
+            # single-document prompt has no such machinery.
+            document_inventory = None
+            retrieve_kwargs["top_k"] = config.TOP_K
 
     if document_inventory:
         balanced = needs_document_balance(query, history=history) and len(document_inventory) > 1
